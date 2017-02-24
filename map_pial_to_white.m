@@ -6,6 +6,8 @@ function pial_white_map=map_pial_to_white(white, pial)
 % where the first argument is the white matter surface gifti object and the second is the pial surface gifti
 % object
 
+addpath('TriangleRayIntersection');
+
 % Compute normal vectors for each pial surface vertex - pointing inward
 normal_vecs=spm_mesh_normals(struct('faces',pial.faces,'vertices',pial.vertices),true);
 
@@ -42,3 +44,5 @@ for i=1:n_vertices
     pial_white_map(i)=closest_white;    
         
 end
+
+rmpath('TriangleRayIntersection');
