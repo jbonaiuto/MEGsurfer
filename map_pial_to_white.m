@@ -1,5 +1,5 @@
 function pial_white_map=map_pial_to_white(white_name, pial_name, varargin)
-% MAP_PIAL_TO_WHITE  Create a mapping from pial to white matter surface vertices based on vertex normal vectors
+% MAP_PIAL_TO_WHITE  Create a mapping from pial to white matter surface vertices
 %
 % Use as
 %   pial_white_map=map_pial_to_white(white, pial)
@@ -31,7 +31,7 @@ end
 [meshpath white_file ext]=fileparts(white_name);
 [meshpath pial_file ext]=fileparts(pial_name);
 map_file=fullfile(meshpath, sprintf('map_pial_white_%s_%s-%s.mat', params.mapType, pial_file, white_file));
-if exist(map_file,'file')~=1 || params.recompute
+if exist(map_file,'file')~=2 || params.recompute
     disp('Recomputing mapping');
     white=gifti(white_name);
     pial=gifti(pial_name);
@@ -56,7 +56,7 @@ if exist(map_file,'file')~=1 || params.recompute
             % Iterate over each pial vertex
             for i=1:n_vertices
 
-                % Get intersection of ray originating from pial vertex and pointing in normal direction with the white matter
+                % Get intersection of ray originating from pial vertex and pointing in normal direction with the pial
                 % surface
                 orig=pial.vertices(i,:);
 
@@ -77,9 +77,9 @@ if exist(map_file,'file')~=1 || params.recompute
             % Map from downsampled pial to original pial surface
             pial_ds_pial_map=dsearchn(orig_pial.vertices,pial.vertices);
             % Map from original white surface to downsampled white surface
-            ds_wm_wm_map=dsearchn(white.vertices,orig_white	.vertices);
+            ds_white_white_map=dsearchn(white.vertices,orig_white.vertices);
             % Apply original white -> downsampled white mapping to downsampled pial -> original pial mapping
-            pial_white_map=ds_wm_wm_map(pial_ds_pial_map);
+            pial_white_map=ds_white_white_map(pial_ds_pial_map);
     end
     save(map_file,'pial_white_map');
 else
