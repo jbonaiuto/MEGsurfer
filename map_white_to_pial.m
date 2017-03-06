@@ -44,7 +44,7 @@ if exist(map_file,'file')~=2 || params.recompute
         case 'normal' % Maps to the nearest intersection in the normal vector direction on the other surface
             % Compute normal vectors for each white surface vertex - pointing outward
             % TODO: how to make sure that they're pointing outward?
-            normal=spm_mesh_normals(white,true);
+            normal=spm_mesh_normals(struct('vertices',white.vertices,'faces',white.faces),true);
         
             % Get x, y, z for each pial surface vertex
             vert1 = pial.vertices(pial.faces(:,1),:);
