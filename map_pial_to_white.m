@@ -60,7 +60,7 @@ if exist(map_file,'file')~=2 || params.recompute
                 % surface
                 orig=pial.vertices(i,:);
 
-                [intersected,t,u,v,xcoor] = TriangleRayIntersection(orig, normal(i,:).*-1, vert1, vert2, vert3, 'border', 'inclusive' ,'lineType', 'ray');
+                [intersected,t,u,v,xcoor] = TriangleRayIntersection(orig, normal(i,:), vert1, vert2, vert3, 'border', 'inclusive' ,'lineType', 'line');
                 % If there are any intersections
                 intersected_idx=find(intersected>0);
                 if length(intersected_idx)
