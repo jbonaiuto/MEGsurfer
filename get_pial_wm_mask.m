@@ -22,17 +22,22 @@ wm_mask=[];
 
 % If threshold is not 0
 if abs(threshold)>0
+    % Mapped white matter data
+    mapped_wm_metric=wm_metric(pial_white_map);
+    
     % Find vertices greater than threshold
     if threshold>0
-        % Create pial and white masks
+        % Create pial and white masks and mapped white mask
         pial_mask=find(pial_metric>=threshold);
         wm_mask=find(wm_metric>=threshold);
+        mapped_wm_mask=find(mapped_wm_metric>=threshold);
     % Find vertices less than threshold
     else
-        % Create pial and white masks
+        % Create pial and white maskss and mapped white mask
         pial_mask=find(pial_metric<threshold);
         wm_mask=find(wm_metric<threshold);        
+        mapped_wm_mask=find(mapped_wm_metric<threshold);        
     end
-    % Combined mask is the union of the two
-    mask=union(pial_mask,wm_mask(pial_white_map));
+    % Combined mask is the union of the pial and mapped white mask
+    mask=union(pial_mask,mapped_wm_mask);
 end
