@@ -1,4 +1,4 @@
-function ax=plot_surface(surface, varargin)
+function ax=plot_surface(g, varargin)
 % PLOT_SURFACE  Plots a surface mesh
 %
 % Use as
