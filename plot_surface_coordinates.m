@@ -62,9 +62,12 @@ end
 
 axes(params.ax);
 cameramenu;
+
+% Set title
 if length(params.title)
     annotation(fig,'textbox',[0.15 0.85 0.2 .15],'String',{params.title},'FitBoxToText','on');
 end
+
 % Save plot to file
 if length(params.output_file)>0
     if params.output_format=='eps'
