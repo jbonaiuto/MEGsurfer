@@ -75,7 +75,7 @@ if exist(map_file,'file')~=2 || params.recompute
             orig_pial=gifti(params.origPial);
             orig_white=gifti(params.origWhite);
             % Map from downsampled white to original white surface
-            white_ds_white_map=dsearchn(orig_white.vertices,orig_pial.vertices);
+            white_ds_white_map=dsearchn(orig_white.vertices,white.vertices);
             % Map from original pial surface to downsampled pial surface
             ds_pial_pial_map=dsearchn(pial.vertices,orig_pial.vertices);
             % Apply original pial -> downsampled pial mapping to downsampled white -> original white mapping
