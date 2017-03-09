@@ -8,6 +8,7 @@ function [depth,HS]=compute_sulcal_depth(S)
 % surface used to compute depth.
 % Requires cat toolbox for spm (http://www.neuro.uni-jena.de/cat/)
 
+spm('defaults','eeg');
 % Compute hull surface
 HS=cat_surf_fun('hull',S);
 % Compute mapping from surface to hull
