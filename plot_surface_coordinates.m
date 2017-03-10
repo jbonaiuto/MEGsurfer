@@ -17,9 +17,10 @@ function ax=plot_surface_coordinates(g, coords, coord_color, varargin)
 %    * title - '' (default) or string - Plot title
 %    * surface_alpha - 0.1 (default) or double - surface alpha value. Passed as FaceAlpha
 %        to patch
+%    * coord_radius - 2 (default) or double - radius of plotted coordinates
 
 % Parse inputs
-defaults = struct('output_file', '', 'output_format', 'png', 'ax', 0, 'title', '', 'surface_alpha', 0.1);  %define default values
+defaults = struct('output_file', '', 'output_format', 'png', 'ax', 0, 'title', '', 'surface_alpha', 0.1, 'coord_radius', 2);  %define default values
 params = struct(varargin{:});
 for f = fieldnames(defaults)',
     if ~isfield(params, f{1}),
@@ -27,44 +28,17 @@ for f = fieldnames(defaults)',
     end
 end
 
-% Create figure and axis if not specified
-if params.ax==0
-    fig=figure('Renderer','OpenGL', 'Color',[1 1 1]);
-    params.ax = axes('Parent', fig);
-end
-set(params.ax,'Visible','off');
-set(params.ax,'Projection','perspective');
-set(params.ax,'PlotBoxAspectRatio',[1.268 1 1.129]);
-set(params.ax,'DataAspectRatio',[1 1 1]);
-
 % Plot surface
-hp = patch('vertices', g.vertices, 'faces', g.faces,...
-    'EdgeColor', 'none', 'Parent', params.ax, 'FaceColor',[0.5 0.5 0.5],...
-    'FaceAlpha', params.surface_alpha, 'linestyle','none',...
-    'AmbientStrength',0.4,'DiffuseStrength',0.9,...
-    'FaceLighting','phong','SpecularStrength',0.5);
- 
-% Create light
-light('Parent',params.ax,'Style','local','Position',[749 868.1 1263]);
- 
-% Create light
-light('Parent',params.ax,'Style','local','Position',[-1611 -265.3 288.5]);
- 
-% Create light
-light('Visible','off','Parent',params.ax,'Style','local','Position',[776.2 899.5 1309]);
+ax=plot_surface(g, 'ax', params.ax, 'title', params.title, 'surface_alpha', params.surface_alpha);
+fig=get(ax,'Parent');
 
+% Plot coordinates
 [x,y,z]=sphere();
-rad=2;
 for s=1:size(coords,1)
-    hp=surface(x.*rad+double(coords(s,1)),y.*rad+double(coords(s,2)),z.*rad+double(coords(s,3)),...
+    hp=surface(x.*params.coord_radius+double(coords(s,1)),y.*params.coord_radius+double(coords(s,2)),z.*params.coord_radius+double(coords(s,3)),...
        'FaceColor',coord_color,'EdgeColor','none','linestyle','none','FaceLighting','phong');
 end
 
-axes(params.ax);
-cameramenu;
-if length(params.title)
-    annotation(fig,'textbox',[0.15 0.85 0.2 .15],'String',{params.title},'FitBoxToText','on');
-end
 % Save plot to file
 if length(params.output_file)>0
     if params.output_format=='eps'
@@ -74,4 +48,3 @@ if length(params.output_file)>0
     end
 end
 
-ax=params.ax;
