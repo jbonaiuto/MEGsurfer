@@ -41,15 +41,15 @@ if length(threshold)>0
     % Find vertices greater than threshold
     if strcmp(params.thresh_type,'lower')
         % Create pial and white masks and mapped white mask
-        pial_mask=find(pial_metric>threshold);
-        wm_mask=find(wm_metric>threshold);
-        mapped_wm_mask=find(mapped_wm_metric>threshold);
+        pial_mask=find(pial_metric>threshold & ~isinf(pial_metric));
+        wm_mask=find(wm_metric>threshold & ~isinf(wm_metric));
+        mapped_wm_mask=find(mapped_wm_metric>threshold & ~isinf(mapped_wm_metric));
     % Find vertices less than threshold
     else
         % Create pial and white maskss and mapped white mask
-        pial_mask=find(pial_metric<threshold);
-        wm_mask=find(wm_metric<threshold);        
-        mapped_wm_mask=find(mapped_wm_metric<threshold);        
+        pial_mask=find(pial_metric<threshold & ~isinf(pial_metric));
+        wm_mask=find(wm_metric<threshold & ~isinf(wm_metric));        
+        mapped_wm_mask=find(mapped_wm_metric<threshold & ~isinf(mapped_wm_metric));        
     end
     % Combined mask is the union of the pial and mapped white mask
     mask=union(pial_mask,mapped_wm_mask);
