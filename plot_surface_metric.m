@@ -27,11 +27,12 @@ function [ax, metric_data]=plot_surface_metric( surface, metric_data, varargin)
 %    * clip_vals - true (default) or false - whether or not to clip values
 %        in color scale by 2 and 98 percentile of overlay data
 %    * clabel - '' (default) or string - label for color map
+%    * custom_cm - true (default) or false - whether or not to use a custom color map
 
 % Parse inputs
 defaults = struct('output_file', '', 'output_format', 'png', 'ax', 0,...
     'limits', [], 'mask', [], 'title', '', 'threshold', 0, ...
-    'clip_vals', true, 'clabel' ,'');  %define default values
+    'clip_vals', true, 'clabel' ,'', 'custom_cm', true);  %define default values
 params = struct(varargin{:});
 for f = fieldnames(defaults)',
     if ~isfield(params, f{1}),
@@ -123,8 +124,12 @@ C_pos=generate_color_map(poslen, pos_control_pts);
 C_neg=generate_color_map(neglen, neg_control_pts);
 
 % Set color map
-cm=colormap([C_neg;C_pos]/255);
-%cm=colormap;
+if params.custom_cm
+    cm=colormap([C_neg;C_pos]/255);
+else
+    cm=colormap();
+end
+
 % Show colorbar and freeze
 set(params.ax, 'Clim', params.limits);
 cb=colorbar();
