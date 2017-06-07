@@ -45,6 +45,6 @@ wm_thickness=sqrt(sum((pial.vertices(white_pial_map,:)-wm.vertices).^2,2));
 
 % Smooth thickness
 if params.smooth
-    pial_thickness=spm_mesh_smooth(pial, pial_thickness, 5);
-    wm_thickness=spm_mesh_smooth(wm, wm_thickness, 5);
+    pial_thickness=spm_mesh_smooth(pial, pial_thickness, 8);
+    wm_thickness=spm_mesh_smooth(wm, wm_thickness, 8);
 end
