@@ -28,11 +28,17 @@ function [ax, metric_data]=plot_surface_metric( surface, metric_data, varargin)
 %        in color scale by 2 and 98 percentile of overlay data
 %    * clabel - '' (default) or string - label for color map
 %    * custom_cm - true (default) or false - whether or not to use a custom color map
+%    * specular_strength - 0.0 (default) - light specular strength
+%    * ambient_strength - 0.75 (default) - light ambient strength
+%    * diffuse_strength - 1.0 (default) - light diffuse strength
+%    * face_lighting - phong (default) - face lighting
 
 % Parse inputs
 defaults = struct('output_file', '', 'output_format', 'png', 'ax', 0,...
     'limits', [], 'mask', [], 'title', '', 'threshold', 0, ...
-    'clip_vals', true, 'clabel' ,'', 'custom_cm', true);  %define default values
+    'clip_vals', true, 'clabel' ,'', 'custom_cm', true, ...
+    'specular_strength', 0.0, 'ambient_strength', 0.75,...
+    'diffuse_strength', 1.0, 'face_lighting', 'phong');  %define default values
 params = struct(varargin{:});
 for f = fieldnames(defaults)',
     if ~isfield(params, f{1}),
@@ -54,8 +60,12 @@ set(params.ax,'DataAspectRatio',[1 1 1]);
 % Plot surface
 hp = patch('vertices', surface.vertices, 'faces', surface.faces,...
     'EdgeColor', 'none', 'Parent', params.ax, 'FaceColor','interp',...
-    'linestyle','none','AmbientStrength',0.75,'DiffuseStrength',1.0,...
-    'FaceLighting','phong','SpecularStrength',0.0);
+    'linestyle','none','AmbientStrength',params.ambient_strength,...,
+    'DiffuseStrength', params.diffuse_strength,...
+    'SpecularStrength',params.specular_strength);
+if length(params.face_lighting)
+    set(hp, 'FaceLighting', params.face_lighting);
+end
  
 % Create light
 light('Parent',params.ax,'Style','local','Position',[749 868.1 1263]);
