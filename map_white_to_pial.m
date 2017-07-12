@@ -36,7 +36,7 @@ if exist(map_file,'file')~=2 || params.recompute
     white=gifti(white_name);
     pial=gifti(pial_name);
     n_vertices=size(pial.vertices,1);
-    pial_white_map=[1:n_vertices];
+    white_pial_map=[1:n_vertices];
     switch params.mapType
         case 'nearest' % Maps to the nearest vertex on the pial surface
             % Get index of nearest pial vertex for each white vertex

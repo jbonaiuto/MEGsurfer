@@ -15,9 +15,15 @@ function ax=plot_surface(g, varargin)
 %    * title - '' (default) or string - Plot title
 %    * surface_alpha - 1.0 (default) or double - surface alpha value. Passed as FaceAlpha
 %        to patch
+%    * specular_strength - 0.0 (default) - light specular strength
+%    * ambient_strength - 0.75 (default) - light ambient strength
+%    * diffuse_strength - 1.0 (default) - light diffuse strength
+%    * face_lighting - phong (default) - face lighting
 
 % Parse inputs
-defaults = struct('output_file','','output_format','png','ax',0,'title','','surface_alpha',1.0);  %define default values
+defaults = struct('output_file','','output_format','png','ax',0,'title','',...
+    'surface_alpha',1.0, 'specular_strength', 0.0, 'ambient_strength', 0.75,...
+    'diffuse_strength', 1.0, 'face_lighting', 'phong');  %define default values
 params = struct(varargin{:});
 for f = fieldnames(defaults)',
     if ~isfield(params, f{1}),
@@ -39,11 +45,13 @@ set(params.ax,'DataAspectRatio',[1 1 1]);
 hp = patch('vertices', g.vertices, 'faces', g.faces,...
     'EdgeColor', 'none', 'Parent', params.ax, 'FaceColor',[0.5 0.5 0.5],...
     'FaceAlpha', params.surface_alpha, 'linestyle','none',...
-    'AmbientStrength',0.75,'DiffuseStrength',1.0,...
-    'FaceLighting','phong','SpecularStrength',0.0);
-    %'AmbientStrength',0.4,'DiffuseStrength',0.9,...
-    %'FaceLighting','phong','SpecularStrength',0.5);
- 
+    'AmbientStrength',params.ambient_strength,...,
+    'DiffuseStrength', params.diffuse_strength,...
+    'SpecularStrength',params.specular_strength);
+if length(params.face_lighting)
+    set(hp, 'FaceLighting', params.face_lighting);
+end
+
 % Create light
 light('Parent',params.ax,'Style','local','Position',[749 868.1 1263]);
  
