@@ -188,6 +188,7 @@ end
 set(hp,'FaceVertexCData', display_metric_data);
 axes(params.ax);
 cameramenu;
+freezeColors(params.ax);
 
 ax=params.ax;
 
