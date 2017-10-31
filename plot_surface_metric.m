@@ -124,7 +124,16 @@ end
 % Number of colors overall
 num_colors=255;
 % Compute ratio of positive to negative values
-ratio=abs(params.limits(1))/(abs(params.limits(1))+params.limits(2));
+if params.limits(1)<0
+    if params.limits(2)<0
+        ratio=1;
+    else
+        % Compute ratio of positive to negative values
+        ratio=abs(params.limits(1))/(abs(params.limits(1))+params.limits(2));
+    end
+else
+    ratio=0;
+end
 % Compute number of postive and negative colots
 neglen=round(num_colors*ratio);
 poslen=num_colors-neglen;
@@ -198,6 +207,8 @@ end
 set(hp,'FaceVertexCData', display_metric_data);
 axes(params.ax);
 cameramenu;
+
+freezeColors(params.ax);
 
 ax=params.ax;
 
