@@ -168,9 +168,9 @@ if params.align_to_headcast_t1
     [files,~] = spm_select('List', fullfile(mpm_dir,'Results'));
     for f=1:size(files,1)
         filename=deblank(files(f,:));
-        if length(strfind(filename,'_R1.nii'))>0
+        if contains(filename,'_R1.nii')
             matlabbatch{batch_idx}.spm.spatial.coreg.estimate.source = {fullfile(mpm_dir,'Results',[filename ',1'])};
-        elseif length(strfind(filename,'_MT.nii'))>0 || length(strfind(filename,'_PD.nii'))>0 || length(strfind(filename,'_R1.nii'))>0 || length(strfind(filename,'_R2s_OLS.nii'))>0
+        elseif contains(filename,'_MT.nii') || contains(filename,'_PD.nii') || contains(filename,'_R1.nii') || contains(filename,'_R2s_OLS.nii')
             matlabbatch{batch_idx}.spm.spatial.coreg.estimate.other{end+1}=fullfile(mpm_dir,'Results',[filename ',1']);
         end
     end
