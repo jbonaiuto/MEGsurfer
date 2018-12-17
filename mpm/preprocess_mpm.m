@@ -165,7 +165,7 @@ if params.align_to_headcast_t1
     matlabbatch{batch_idx}.spm.spatial.coreg.estimate.ref = {params.headcast_t1};
     matlabbatch{batch_idx}.spm.spatial.coreg.estimate.source = {};
     matlabbatch{batch_idx}.spm.spatial.coreg.estimate.other = {};
-    [files,dirs] = spm_select('List', fullfile(mpm_dir,'Results'));
+    [files,~] = spm_select('List', fullfile(mpm_dir,'Results'));
     for f=1:size(files,1)
         filename=deblank(files(f,:));
         if length(strfind(filename,'_R1.nii'))>0
