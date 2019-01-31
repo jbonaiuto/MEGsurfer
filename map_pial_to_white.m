@@ -40,7 +40,7 @@ if exist(map_file,'file')~=2 || params.recompute
     switch params.mapType
         case 'nearest' % Maps to the nearest vertex on the white surface
             % Get index of nearest white vertex for each pial vertex
-            pial_white_map=dsearchn(white.vertices,pial.vertices);
+            pial_white_map=knnsearch(white.vertices,pial.vertices); 
         case 'normal' % Maps to the nearest intersection in the normal vector direction on the other surface
             % Compute normal vectors for each pial surface vertex - pointing outward
             % TODO: how to make sure that they're pointing outward?
@@ -51,7 +51,7 @@ if exist(map_file,'file')~=2 || params.recompute
             vert2 = white.vertices(white.faces(:,2),:);
             vert3 = white.vertices(white.faces(:,3),:);
         
-            pial_white_map=dsearchn(white.vertices,pial.vertices);
+            pial_white_map=knnsearch(white.vertices,pial.vertices);
 
             % Iterate over each pial vertex
             for i=1:n_vertices
@@ -65,9 +65,9 @@ if exist(map_file,'file')~=2 || params.recompute
                 intersected_idx=find(intersected>0);
                 if length(intersected_idx)
                     % Get closest intersection point on white mesh
-                    nearest_intersection_idx=dsearchn(xcoor(intersected_idx,:),orig);
+                    nearest_intersection_idx=knnsearch(xcoor(intersected_idx,:),orig);
                     % Get closest white vertex to intersection
-                    closest_white=dsearchn(white.vertices,xcoor(intersected_idx(nearest_intersection_idx),:));
+                    closest_white=knnsearch(white.vertices,xcoor(intersected_idx(nearest_intersection_idx),:));
                     pial_white_map(i)=closest_white;
                 end            
             end
@@ -75,9 +75,9 @@ if exist(map_file,'file')~=2 || params.recompute
             orig_pial=gifti(params.origPial);
             orig_white=gifti(params.origWhite);
             % Map from downsampled pial to original pial surface
-            pial_ds_pial_map=dsearchn(orig_pial.vertices,pial.vertices);
+            pial_ds_pial_map=knnsearch(orig_pial.vertices,pial.vertices);
             % Map from original white surface to downsampled white surface
-            ds_white_white_map=dsearchn(white.vertices,orig_white.vertices);
+            ds_white_white_map=knnsearch(white.vertices,orig_white.vertices);
             % Apply original white -> downsampled white mapping to downsampled pial -> original pial mapping
             pial_white_map=ds_white_white_map(pial_ds_pial_map);
     end
