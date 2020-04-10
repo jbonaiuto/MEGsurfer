@@ -24,6 +24,6 @@ else
     HS=gifti(hull_file);
 end
 % Compute mapping from surface to hull
-mapping=dsearchn(HS.vertices,S.vertices);
+mapping=knnsearch(HS.vertices,S.vertices);
 % Compute distance for each vertex
 depth=sqrt(sum((S.vertices-HS.vertices(mapping,:)).^2,2));
