@@ -3,7 +3,7 @@ Utilities for working with MEG data and cortical surfaces
 
 
 Requirements:
-* SPM v12
+* SPM v12 (replace the @gifti folder with the one provided)
 * FreeSurfer v5.3.0
 
 For MPM processing:
