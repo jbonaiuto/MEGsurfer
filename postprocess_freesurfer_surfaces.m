@@ -71,11 +71,30 @@ end
 
 % downsample
 if params.downsample
+    disp('Decimating to 10%');
     pial_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.gii');
     ds_pial_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.ds.gii');
     white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.gii');
     ds_white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.ds.gii');
     decimate_two_surfaces(white_surf, pial_surf, ds_white_surf, ds_pial_surf, 0.1);
+    
+    % Try decimating to 5% and 3%
+    try
+        disp('Decimating to 5%')
+        pial_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.gii');
+        ds_pial_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.ds2.gii');
+        white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.gii');
+        ds_white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.ds2.gii');
+        decimate_two_surfaces(white_surf, pial_surf, ds_white_surf, ds_pial_surf, 0.05);
+        disp('Decimating to 3%')
+        pial_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.gii');
+        ds_pial_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.ds3.gii');
+        white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.gii');
+        ds_white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.ds3.gii');
+        decimate_two_surfaces(white_surf, pial_surf, ds_white_surf, ds_pial_surf, 0.03);
+    catch
+        warning('Could not decimate further');
+    end
 end
 
 if params.extract_subcortical_surfs
