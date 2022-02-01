@@ -155,8 +155,11 @@ cb=colorbar();
 if length(params.clabel)
     ylabel(cb,params.clabel)
 end
-cbfreeze(cm);
+%cbfreeze(cm);
 freezeColors(params.ax);
+drawnow();
+tick_percentages=(get(cb,'Ticks')-params.limits(1))/(params.limits(2)-params.limits(1));
+tick_labels=get(cb,'TickLabels');
 
 % Generate display version of metric data
 display_metric_data=metric_data;
@@ -205,6 +208,10 @@ end
 
 % Set face color data
 set(hp,'FaceVertexCData', display_metric_data);
+new_limits=get(cb,'Limits');
+new_ticks=(new_limits(2)-new_limits(1))*tick_percentages+new_limits(1);
+set(cb,'Ticks',new_ticks);
+set(cb,'TickLabels',tick_labels);
 axes(params.ax);
 cameramenu;
 freezeColors(params.ax);
@@ -220,7 +227,7 @@ end
 
 % Save plot to file
 if length(params.output_file)>0
-    if params.output_format=='eps'
+    if strcmp(params.output_format,'eps')
         figure2eps(fig, params.output_file, 10, '-opengl');
     else
         saveas(fig, params.output_file, params.output_format);
