@@ -149,13 +149,12 @@ else
     cm=colormap();
 end
 
-% Show colorbar and freeze
+% Show colorbar
 set(params.ax, 'Clim', params.limits);
 cb=colorbar();
 if length(params.clabel)
     ylabel(cb,params.clabel)
 end
-%cbfreeze(cm);
 freezeColors(params.ax);
 drawnow();
 tick_percentages=(get(cb,'Ticks')-params.limits(1))/(params.limits(2)-params.limits(1));
