@@ -1,6 +1,4 @@
-function norm_vecs=compute_surface_normals(subjects_dir, subj_id, surface, method)
-
-surf_dir=fullfile(subjects_dir, subj_id, 'surf');
+function norm_vecs=compute_surface_normals(surf_dir, surface, method)
 
 if strcmp(surface,'white-pial')
     ds_surface=gifti(fullfile(surf_dir, 'white.ds-pial.ds.gii'));
