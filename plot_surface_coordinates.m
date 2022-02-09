@@ -20,7 +20,8 @@ function ax=plot_surface_coordinates(g, coords, coord_color, varargin)
 %    * coord_radius - 2 (default) or double - radius of plotted coordinates
 
 % Parse inputs
-defaults = struct('output_file', '', 'output_format', 'png', 'ax', 0, 'title', '', 'surface_alpha', 0.1, 'coord_radius', 2);  %define default values
+defaults = struct('output_file', '', 'output_format', 'png', 'ax', 0,...
+    'title', '', 'surface_alpha', 0.1, 'coord_radius', 2);  %define default values
 params = struct(varargin{:});
 for f = fieldnames(defaults)',
     if ~isfield(params, f{1}),
