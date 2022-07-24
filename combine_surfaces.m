@@ -29,7 +29,7 @@ if isfield(mesh_one,'normals')
     combined_normals=[mesh_one.normals];
 end
 % mesh two face number will start with max mesh one face number+1
-face_offset=face_offset+max(mesh_one.faces(:));
+face_offset=face_offset+size(mesh_one.vertices,1);
 
 for s=2:length(surfaces)
     mesh_two=gifti(surfaces{s});
@@ -40,7 +40,7 @@ for s=2:length(surfaces)
     if length(combined_normals)>0 && isfield(mesh_two,'normals')
         combined_normals=[combined_normals; mesh_two.normals];
     end
-    face_offset=face_offset+max(mesh_two.faces(:));
+    face_offset=face_offset+size(mesh_two.vertices,1);
 end
 
 % Create and save combined gifti
