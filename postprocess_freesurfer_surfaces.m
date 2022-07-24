@@ -44,7 +44,7 @@ for s_idx=1:length(surfaces)
         lh=fullfile(params.subjects_dir, subj_id, 'surf', sprintf('lh.%s.gii', surfaces{s_idx}));
         rh=fullfile(params.subjects_dir, subj_id, 'surf', sprintf('rh.%s.gii', surfaces{s_idx}));
         combined=fullfile(params.subjects_dir, subj_id, 'surf', sprintf('%s.gii', surfaces{s_idx}));
-        combine_surfaces(lh, rh, combined);
+        combine_surfaces({lh, rh}, combined);
     end
 end
 
@@ -76,7 +76,7 @@ if params.downsample
     ds_pial_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.ds.gii');
     white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.gii');
     ds_white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.ds.gii');
-    decimate_two_surfaces(white_surf, pial_surf, ds_white_surf, ds_pial_surf, 0.1);
+    decimate_multiple_surfaces({white_surf, pial_surf}, {ds_white_surf, ds_pial_surf}, 0.1);
     
     % Try decimating to 5% and 3%
     try
@@ -85,13 +85,13 @@ if params.downsample
         ds_pial_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.ds2.gii');
         white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.gii');
         ds_white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.ds2.gii');
-        decimate_two_surfaces(white_surf, pial_surf, ds_white_surf, ds_pial_surf, 0.05);
+        decimate_multiple_surfaces({white_surf, pial_surf}, {ds_white_surf, ds_pial_surf}, 0.05);
         disp('Decimating to 3%')
         pial_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.gii');
         ds_pial_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.ds3.gii');
         white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.gii');
         ds_white_surf=fullfile(params.subjects_dir, subj_id, 'surf', 'white.ds3.gii');
-        decimate_two_surfaces(white_surf, pial_surf, ds_white_surf, ds_pial_surf, 0.03);
+        decimate_multiple_surfaces({white_surf, pial_surf}, {ds_white_surf, ds_pial_surf}, 0.03);
     catch
         warning('Could not decimate further');
     end
@@ -130,7 +130,7 @@ if params.combine_layers
     white=fullfile(params.subjects_dir, subj_id, 'surf', 'white.ds.gii');
     pial=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.ds.gii');
     combined=fullfile(params.subjects_dir, subj_id, 'surf', 'white.ds-pial.ds.gii');
-    combine_surfaces(white, pial, combined);
+    combine_surfaces({white, pial}, combined);
 end
 
 % inflate
