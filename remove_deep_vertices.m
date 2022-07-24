@@ -14,8 +14,10 @@ for i=1:size(ds_surf.vertices,1)
             struct_idx=find(lh_colortable.table(:,5)==lh_label(orig_vtx));
             region=lh_colortable.struct_names{struct_idx};
             if strcmp(region,'unknown')
-                vertices_to_remove(end+1)=i;
+                vertices_to_remove(end+1)=i;                
             end
+        else
+            vertices_to_remove(end+1)=i;                
         end
     else
         orig_vtx=orig_vtx-length(lh_vertices);
@@ -25,6 +27,8 @@ for i=1:size(ds_surf.vertices,1)
             if strcmp(region,'unknown')
                 vertices_to_remove(end+1)=i;
             end
+        else
+            vertices_to_remove(end+1)=i; 
         end
     end
 end
