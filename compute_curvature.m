@@ -8,7 +8,8 @@ function curvature=compute_curvature(surface_file, varargin)
 %
 %   compute_curvature(...,'param','value','param','value'...) allows
 %    additional param/value pairs to be used. Allowed parameters:
-%    * curvature_type - 'k1' (default) or string - type of curvature to compute
+%    * curvature_type - 'k1' (default) or string - type of curvature to
+%      compute
 %       - k1
 %       - k2
 %       - mean
@@ -39,11 +40,12 @@ k1_file=fullfile(path, sprintf('%s_k1',file));
 k2_file=fullfile(path, sprintf('%s_k2',file));
 
 % Check if k1 and k2 files already exist - if not, recompute
-if exist(sprintf('%s.shape.gii',k1_file),'file')~=2 || exist(sprintf('%s.shape.gii',k2_file),'file')~=2
+if exist(sprintf('%s.gii',k1_file),'file')~=2 || exist(sprintf('%s.gii',k2_file),'file')~=2
     surface=gifti(surface_file);
     %% calculate curvatures
     getderivatives=0;
-    [PrincipalCurvatures,PrincipalDir1,PrincipalDir2,FaceCMatrix,VertexCMatrix,Cmagnitude]= GetCurvatures( surface ,getderivatives);
+    [PrincipalCurvatures,~,~,~,~,~]= GetCurvatures(surface,...
+        getderivatives);
 
     k1=PrincipalCurvatures(1,:)';
     k2=PrincipalCurvatures(2,:)';
@@ -51,9 +53,9 @@ if exist(sprintf('%s.shape.gii',k1_file),'file')~=2 || exist(sprintf('%s.shape.g
     write_metric_gifti(k2_file, k2);
 % Otherwise load from files
 else
-    k1_surf=gifti(sprintf('%s.shape.gii',k1_file));
+    k1_surf=gifti(sprintf('%s.gii',k1_file));
     k1=k1_surf.cdata(:);
-    k2_surf=gifti(sprintf('%s.shape.gii',k2_file));
+    k2_surf=gifti(sprintf('%s.gii',k2_file));
     k2=k2_surf.cdata(:);
 end
 
