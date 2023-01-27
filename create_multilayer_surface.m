@@ -70,5 +70,7 @@ out_surfs{end+1}=fullfile(params.subjects_dir, subj_id, 'surf', 'pial.ds.gii');
 decimate_multiple_surfaces(in_surfs, out_surfs, 0.1);
 
 combined=fullfile(params.subjects_dir, subj_id, 'surf', 'multilayer.ds.gii');
+% reverse order so surface order matches electrode order in laminar recordings
+out_surfs(end:-1:1) = out_surfs(:);
 combine_surfaces(out_surfs, combined);
 
