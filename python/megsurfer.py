@@ -320,3 +320,186 @@ def combine_surfaces(surfaces):
 
     combined_surf = create_surf_gifti(combined_vertices, combined_faces, normals=combined_normals)
     return combined_surf
+
+
+
+
+def postprocess_freesurfer_surfaces(subj_id,
+                                    out_dir,
+                                    out_fname,
+                                    n_surfaces=11,
+                                    ds_factor=0.1,
+                                    orientation='link_vector',
+                                    remove_deep=True):
+    """
+    Process and combine FreeSurfer surface meshes for a subject.
+
+    This function processes FreeSurfer surface meshes for a given subject by creating intermediate surfaces,
+    adjusting for RAS offset, removing deep vertices, combining hemispheres, downsampling, and computing link vectors.
+    The resulting surfaces are combined and saved to a specified output file.
+
+    Parameters:
+    subj_id (str): Subject ID corresponding to the FreeSurfer subject directory.
+    out_dir (str): Output directory where the processed files will be saved.
+    out_fname (str): Filename for the final combined surface mesh.
+    n_surfaces (int, optional): Number of intermediate surfaces to create between white and pial surfaces.
+    ds_factor (float, optional): Downsampling factor for surface decimation.
+    orientation (str, optional): Method to compute orientation vectors ('link_vector' for pial-white link).
+    remove_deep (bool, optional): Flag to remove vertices located in deep regions (labeled as 'unknown').
+
+    Notes:
+    - This function assumes the FreeSurfer 'SUBJECTS_DIR' environment variable is set.
+    - Surfaces are processed in Gifti format and combined into a single surface mesh.
+    - If `orientation` is 'link_vector', link vectors are computed as normals for the downsampled surfaces.
+
+    Example:
+    >>> postprocess_freesurfer_surfaces('subject1', '/path/to/output', 'combined_surface.gii')
+    """
+
+    hemispheres = ['lh', 'rh']
+    fs_subjects_dir = os.getenv('SUBJECTS_DIR')
+
+    fs_subject_dir = os.path.join(fs_subjects_dir, subj_id)
+
+    subject_out_dir = os.path.join(out_dir, subj_id)
+    layers = np.linspace(1, 0, n_surfaces)
+
+    ## Create intermediate surfaces if needed
+    layer_names = []
+    for l, layer in enumerate(layers):
+        if layer == 1:
+            layer_names.append('pial')
+        elif layer > 0 and layer < 1:
+            layer_name = '{:.3f}'.format(layer)
+            layer_names.append(layer_name)
+            for hemi in hemispheres:
+                wm_file = os.path.join(fs_subject_dir, 'surf', '{}.white'.format(hemi))
+                out_file = os.path.join(fs_subject_dir, 'surf', '{}.{}'.format(hemi, layer_name))
+                cmd = ['mris_expand', '-thickness', wm_file, '{}'.format(layer), out_file]
+                print(' '.join(cmd))
+                subprocess.run(cmd)
+        elif layer == 0:
+            layer_names.append('white')
+
+    ## Compute RAS offset
+    # Define the path to the MRI file
+    ras_off_file = os.path.join(fs_subject_dir, 'mri', 'orig.mgz')
+
+    # Execute the shell command to get RAS offset
+    command = f"mri_info --cras {ras_off_file}"
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+
+    # Parse the output
+    cols = out.decode().split()
+    ras_offset = np.array([float(cols[0]), float(cols[1]), float(cols[2])])
+
+    # Print the result
+    print(ras_offset)
+
+    ## Convert to gifti, adjust for RAS offset, and remove deep vertices
+    for layer_name in layer_names:
+        for hemi in hemispheres:
+            # Construct the original and new file names
+            orig_name = os.path.join(fs_subject_dir, 'surf', f'{hemi}.{layer_name}')
+            new_name = os.path.join(subject_out_dir, f'{hemi}.{layer_name}.gii')
+
+            # Convert the surface file to Gifti format
+            subprocess.run(['mris_convert', orig_name, new_name])
+
+            # Load the Gifti file
+            g = nib.load(new_name)
+
+            # Set transformation matrix to identity
+            g.affine = np.eye(4)
+
+            # Adjust for RAS offset
+            n_vertices = 0
+            for da in g.darrays:
+                if da.intent == nib.nifti1.intent_codes['NIFTI_INTENT_POINTSET']:
+                    da.data += ras_offset
+                    n_vertices = da.data.shape[0]
+
+            annotation = os.path.join(fs_subject_dir, 'label', f'{hemi}.aparc.annot')
+            label, ctab, names = nib.freesurfer.read_annot(annotation)
+
+            # Remove vertices created by cutting the hemispheres
+            if remove_deep:
+                vertices_to_remove = []
+                for vtx in range(n_vertices):
+                    if label[vtx] > 0:
+                        region = names[label[vtx]]
+                        if region == 'unknown':
+                            vertices_to_remove.append(vtx)
+                    else:
+                        vertices_to_remove.append(vtx)
+                g = remove_vertices(g, np.array(vertices_to_remove))
+
+            # Save the modified Gifti file
+            nib.save(g, new_name)
+
+    ## Combine hemispheres
+    for layer_name in layer_names:
+        # Load left and right hemisphere surfaces
+        lh_fname = os.path.join(subject_out_dir, f'lh.{layer_name}.gii')
+        lh = nib.load(lh_fname)
+        rh_fname = os.path.join(subject_out_dir, f'rh.{layer_name}.gii')
+        rh = nib.load(rh_fname)
+
+        # Combine the surfaces
+        combined = combine_surfaces([lh, rh])
+        combined_fname = os.path.join(subject_out_dir, f'{layer_name}.gii')
+        nib.save(combined, combined_fname)
+
+    ## Downsample surfaces at the same time
+    # Get list of surfaces
+    in_surfs = []
+    for layer_name in layer_names:
+        in_surf_fname = os.path.join(subject_out_dir, f'{layer_name}.gii')
+        in_surf = nib.load(in_surf_fname)
+        in_surfs.append(in_surf)
+
+    # Downsample multiple surfaces
+    out_surfs = downsample_multiple_surfaces(in_surfs, ds_factor)
+    for layer_name, out_surf in zip(layer_names, out_surfs):
+        out_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.gii')
+        nib.save(out_surf, out_surf_path)
+
+    ## Compute link vectors
+    if orientation=='link':
+        # Load downsampled pial and white surfaces
+        pial_surf = nib.load(os.path.join(subject_out_dir, 'pial.ds.gii'))
+        white_surf = nib.load(os.path.join(subject_out_dir, 'white.ds.gii'))
+
+        # Extract vertices
+        pial_vertices = pial_surf.darrays[0].data
+        white_vertices = white_surf.darrays[0].data
+
+        # Check for equal number of vertices
+        if pial_vertices.shape[0] != white_vertices.shape[0]:
+            raise ValueError("Pial and white surfaces must have the same number of vertices")
+
+        # Compute link vectors (normals)
+        link_vectors = white_vertices - pial_vertices
+
+        for layer_name in layer_names:
+            in_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.gii')
+            surf = nib.load(in_surf_path)
+
+            # Set these link vectors as the normals for the downsampled surface
+            surf.add_gifti_data_array(nib.gifti.GiftiDataArray(data=link_vectors,
+                                                               intent=nib.nifti1.intent_codes['NIFTI_INTENT_VECTOR']))
+
+            # Save the modified downsampled surface with link vectors as normals
+            out_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.{orientation}.gii')
+            nib.save(surf, out_surf_path)
+
+    ## Combine layers
+    all_surfs = []
+    for layer_name in layer_names:
+        surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.{orientation}.gii')
+        surf = nib.load(surf_path)
+        all_surfs.append(surf)
+
+    combined = combine_surfaces(all_surfs)
+    nib.save(combined, os.path.join(subject_out_dir, out_fname))
