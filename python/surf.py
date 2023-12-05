@@ -11,6 +11,57 @@ from vtkmodules.vtkCommonDataModel import vtkPolyData, vtkCellArray
 from vtkmodules.vtkFiltersCore import vtkDecimatePro
 from vtkmodules.util.numpy_support import numpy_to_vtk, vtk_to_numpy
 
+from scipy.spatial import Delaunay
+
+def _normit(N):
+    normN = np.sqrt(np.sum(N ** 2, axis=1))
+    normN[normN < np.finfo(float).eps] = 1
+    return N / normN[:, np.newaxis]
+
+def mesh_normals(vertices, faces, unit=False):
+    """
+    Compute (unit) normals of a surface mesh.
+
+    Parameters:
+    M (dict): A dictionary with keys 'faces' and 'vertices' representing the mesh.
+    unit (bool): If True, compute unit normals. Default is False.
+
+    Returns:
+    tuple: A tuple (Nv, Nf) where Nv is an array of normals on vertices and
+           Nf is an array of normals on faces.
+    """
+
+    try:
+        t = Delaunay(vertices)
+        Nv = -t.vertex_normal
+        Nf = -t.face_normal
+    except:
+        Nv, Nf = _mesh_normal(vertices, faces)
+
+    if unit:
+        Nv = _normit(Nv)
+        Nf = _normit(Nf)
+
+    return Nv, Nf
+
+def _mesh_normal(vertices, faces):
+    Nf = np.cross(
+        vertices[faces[:, 1], :] - vertices[faces[:, 0], :],
+        vertices[faces[:, 2], :] - vertices[faces[:, 0], :])
+    Nf = _normit(Nf)
+
+    Nv = np.zeros_like(vertices)
+    for i in range(len(faces)):
+        for j in range(3):
+            Nv[faces[i, j], :] += Nf[i, :]
+
+    C = vertices - np.mean(vertices, axis=0)
+    if np.count_nonzero(np.sign(np.sum(C * Nv, axis=1))) > len(C) / 2:
+        Nv = -Nv
+        Nf = -Nf
+
+    return Nv, Nf
+
 
 def create_surf_gifti(vertices, faces, normals=None):
     """
@@ -324,6 +375,84 @@ def combine_surfaces(surfaces):
     return combined_surf
 
 
+def compute_dipole_orientations(method, layer_names, subject_out_dir):
+    """
+    Compute dipole orientations for cortical layers using different methods.
+
+    Parameters:
+    method (str): Method for computing dipole orientations ('link_vector', 'ds_surf_norm', 'orig_surf_norm', or 'cps').
+    layer_names (list): Names of the cortical layers.
+    subject_out_dir (str): Directory where the surface files are stored.
+
+    Returns:
+    numpy.ndarray: An array of dipole orientations for each vertex in each layer.
+
+    Raises:
+    ValueError: If the number of vertices in pial and white surfaces do not match.
+    """
+
+    if method == 'link_vector':
+        # Method: Use link vectors between pial and white surfaces as dipole orientations
+        # Load downsampled pial and white surfaces
+        pial_surf = nib.load(os.path.join(subject_out_dir, 'pial.ds.gii'))
+        white_surf = nib.load(os.path.join(subject_out_dir, 'white.ds.gii'))
+
+        # Extract vertices
+        pial_vertices = pial_surf.darrays[0].data
+        white_vertices = white_surf.darrays[0].data
+
+        # Ensure same number of vertices in pial and white surfaces
+        if pial_vertices.shape[0] != white_vertices.shape[0]:
+            raise ValueError("Pial and white surfaces must have the same number of vertices")
+
+        # Compute link vectors
+        link_vectors = white_vertices - pial_vertices
+
+        # Replicate link vectors for each layer
+        orientations = np.tile(link_vectors, (len(layer_names), 1, 1))
+
+    elif method == 'ds_surf_norm':
+        # Method: Use normals of the downsampled surfaces
+        orientations = []
+        for layer_name in layer_names:
+            in_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.gii')
+            surf = nib.load(in_surf_path)
+            vtx_norms, _ = mesh_normals(surf.darrays[0].data, surf.darrays[1].data, unit=True)
+            orientations.append(vtx_norms)
+        orientations = np.array(orientations)
+
+    elif method == 'orig_surf_norm':
+        # Method: Use normals of the original surfaces, mapped to downsampled surfaces
+        orientations = []
+        for layer_name in layer_names:
+            in_surf_path = os.path.join(subject_out_dir, f'{layer_name}.gii')
+            orig_surf = nib.load(in_surf_path)
+            ds_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.gii')
+            ds_surf = nib.load(ds_surf_path)
+            kdtree = KDTree(orig_surf.darrays[0].data)
+            _, orig_vert_idx = kdtree.query(ds_surf.darrays[0].data, k=1)
+            vtx_norms, _ = mesh_normals(orig_surf.darrays[0].data, orig_surf.darrays[1].data, unit=True)
+            orientations.append(vtx_norms[orig_vert_idx, :])
+        orientations = np.array(orientations)
+
+    elif method == 'cps':
+        # Method: Use cortical patch statistics for normals
+        orientations = []
+        for layer_name in layer_names:
+            in_surf_path = os.path.join(subject_out_dir, f'{layer_name}.gii')
+            orig_surf = nib.load(in_surf_path)
+            ds_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.gii')
+            ds_surf = nib.load(ds_surf_path)
+            kdtree = KDTree(ds_surf.darrays[0].data)
+            _, ds_vert_idx = kdtree.query(orig_surf.darrays[0].data, k=1)
+            orig_vtx_norms, _ = mesh_normals(orig_surf.darrays[0].data, orig_surf.darrays[1].data, unit=True)
+            vtx_norms = np.zeros_like(ds_surf.darrays[0].data)
+            for v_idx in range(vtx_norms.shape[0]):
+                vtx_norms[v_idx, :] = np.mean(orig_vtx_norms[ds_vert_idx == v_idx, :], axis=0)
+            orientations.append(vtx_norms)
+        orientations = np.array(orientations)
+
+    return orientations
 
 
 def postprocess_freesurfer_surfaces(subj_id,
@@ -346,13 +475,14 @@ def postprocess_freesurfer_surfaces(subj_id,
     out_fname (str): Filename for the final combined surface mesh.
     n_surfaces (int, optional): Number of intermediate surfaces to create between white and pial surfaces.
     ds_factor (float, optional): Downsampling factor for surface decimation.
-    orientation (str, optional): Method to compute orientation vectors ('link_vector' for pial-white link).
+    orientation (str, optional): Method to compute orientation vectors ('link_vector' for pial-white link,
+                                 'ds_surf_norm' for downsampled surface normals, 'orig_surf_norm' for original
+                                 surface normals, and 'cps' for cortical patch statistics).
     remove_deep (bool, optional): Flag to remove vertices located in deep regions (labeled as 'unknown').
 
     Notes:
     - This function assumes the FreeSurfer 'SUBJECTS_DIR' environment variable is set.
     - Surfaces are processed in Gifti format and combined into a single surface mesh.
-    - If `orientation` is 'link_vector', link vectors are computed as normals for the downsampled surfaces.
 
     Example:
     >>> postprocess_freesurfer_surfaces('subject1', '/path/to/output', 'combined_surface.gii')
@@ -467,34 +597,20 @@ def postprocess_freesurfer_surfaces(subj_id,
         out_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.gii')
         nib.save(out_surf, out_surf_path)
 
-    ## Compute link vectors
-    if orientation=='link':
-        # Load downsampled pial and white surfaces
-        pial_surf = nib.load(os.path.join(subject_out_dir, 'pial.ds.gii'))
-        white_surf = nib.load(os.path.join(subject_out_dir, 'white.ds.gii'))
+    ## Compute dipole orientations
+    orientations = compute_dipole_orientations(orientation, layer_names, subject_out_dir)
 
-        # Extract vertices
-        pial_vertices = pial_surf.darrays[0].data
-        white_vertices = white_surf.darrays[0].data
+    for l_idx, layer_name in enumerate(layer_names):
+        in_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.gii')
+        surf = nib.load(in_surf_path)
 
-        # Check for equal number of vertices
-        if pial_vertices.shape[0] != white_vertices.shape[0]:
-            raise ValueError("Pial and white surfaces must have the same number of vertices")
+        # Set these link vectors as the normals for the downsampled surface
+        surf.add_gifti_data_array(nib.gifti.GiftiDataArray(data=orientations[l_idx,:,:],
+                                                           intent=nib.nifti1.intent_codes['NIFTI_INTENT_VECTOR']))
 
-        # Compute link vectors (normals)
-        link_vectors = white_vertices - pial_vertices
-
-        for layer_name in layer_names:
-            in_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.gii')
-            surf = nib.load(in_surf_path)
-
-            # Set these link vectors as the normals for the downsampled surface
-            surf.add_gifti_data_array(nib.gifti.GiftiDataArray(data=link_vectors,
-                                                               intent=nib.nifti1.intent_codes['NIFTI_INTENT_VECTOR']))
-
-            # Save the modified downsampled surface with link vectors as normals
-            out_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.{orientation}.gii')
-            nib.save(surf, out_surf_path)
+        # Save the modified downsampled surface with link vectors as normals
+        out_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.{orientation}.gii')
+        nib.save(surf, out_surf_path)
 
     ## Combine layers
     all_surfs = []
@@ -505,3 +621,14 @@ def postprocess_freesurfer_surfaces(subj_id,
 
     combined = combine_surfaces(all_surfs)
     nib.save(combined, os.path.join(subject_out_dir, out_fname))
+
+
+
+if __name__=='__main__':
+    postprocess_freesurfer_surfaces('sub-104',
+                                    './test_output',
+                                    'multilayer.2.ds.ds_surf_norm.gii',
+                                    n_surfaces=2,
+                                    ds_factor=0.1,
+                                    orientation='ds_surf_norm',
+                                    remove_deep=True)
