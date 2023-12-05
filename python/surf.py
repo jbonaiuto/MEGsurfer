@@ -1,15 +1,13 @@
 import os
-import sys
 import subprocess
 import numpy as np
 import nibabel as nib
-import trimesh
 from scipy.spatial import KDTree
 
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import vtkPolyData, vtkCellArray
 from vtkmodules.vtkFiltersCore import vtkDecimatePro
-from vtkmodules.util.numpy_support import numpy_to_vtk, vtk_to_numpy
+from vtkmodules.util.numpy_support import vtk_to_numpy
 
 from scipy.spatial import Delaunay
 
