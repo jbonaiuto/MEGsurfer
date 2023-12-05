@@ -232,7 +232,7 @@ def downsample_multiple_surfaces(in_surfs, ratio):
     kdtree = KDTree(primary_surf.darrays[0].data)
     # Calculate the percentage of vertices retained
     decim_orig_dist, orig_vert_idx = kdtree.query(reduced_vertices, k=1)
-    print(f"{(1 - np.mean(decim_orig_dist > 0)) * 100}% of the vertices in the decimated first surface belong to the initial first surface vertices.")
+    print(f"{(1 - np.mean(decim_orig_dist > 0)) * 100}% of the vertices in the decimated surface belong to the original surface.")
 
     reduced_normals = None
     if len(primary_surf.darrays) > 2 and primary_surf.darrays[2].intent == nib.nifti1.intent_codes['NIFTI_INTENT_VECTOR']:
@@ -259,27 +259,29 @@ def combine_surfaces(surfaces):
     """
     Combine multiple surface meshes into a single surface mesh.
 
-    This function takes a list of surface mesh files and combines them into a single surface mesh.
+    This function takes a list of Gifti surface meshes and combines them into a single surface mesh.
     It concatenates the vertices, faces, and normals (if present) from each surface. The faces are
     re-indexed appropriately to maintain the correct references to the combined vertex array.
 
     Parameters:
-    surfaces (list of str): Paths to the surface mesh files (Gifti format) to be combined.
-    out_fname (str): Path to the output file where the combined surface mesh will be saved.
+    surfaces (list of nibabel.gifti.GiftiImage): List of Gifti surface meshes to be combined.
+
+    Returns:
+    nibabel.gifti.GiftiImage: A single combined Gifti surface mesh.
 
     Notes:
-    - The input surface mesh files should be in Gifti format.
     - The vertices, faces, and normals (if present) from each surface are concatenated.
     - The faces are re-indexed to reference the correct vertices in the combined vertex array.
-    - The combined surface mesh is saved in Gifti format to the specified output file.
+    - If normals are present in any of the input surfaces, they are also combined.
 
     Raises:
     ValueError: If the vertex or face arrays do not have the expected dimensions.
 
     Example:
-    >>> surfaces = ['path/to/surface1.gii', 'path/to/surface2.gii']
-    >>> out_fname = 'path/to/combined_surface.gii'
-    >>> combine_surfaces(surfaces, out_fname)
+    >>> import nibabel as nib
+    >>> surfaces = [nib.load('path/to/surface1.gii'), nib.load('path/to/surface2.gii')]
+    >>> combined_surf = combine_surfaces(surfaces)
+    >>> nib.save(combined_surf, 'path/to/combined_surface.gii')
     """
 
     combined_vertices = []
