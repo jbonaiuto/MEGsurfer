@@ -2,6 +2,9 @@ import os
 import subprocess
 import numpy as np
 import nibabel as nib
+from joblib import Parallel, delayed
+from scipy.io import savemat
+from scipy.sparse import coo_matrix, csr_matrix, lil_matrix
 from scipy.spatial import KDTree
 
 from vtkmodules.vtkCommonCore import vtkPoints
@@ -11,10 +14,31 @@ from vtkmodules.util.numpy_support import vtk_to_numpy
 
 from scipy.spatial import Delaunay
 
+
 def _normit(N):
     normN = np.sqrt(np.sum(N ** 2, axis=1))
     normN[normN < np.finfo(float).eps] = 1
     return N / normN[:, np.newaxis]
+
+
+def _mesh_normal(vertices, faces):
+    Nf = np.cross(
+        vertices[faces[:, 1], :] - vertices[faces[:, 0], :],
+        vertices[faces[:, 2], :] - vertices[faces[:, 0], :])
+    Nf = _normit(Nf)
+
+    Nv = np.zeros_like(vertices)
+    for i in range(len(faces)):
+        for j in range(3):
+            Nv[faces[i, j], :] += Nf[i, :]
+
+    C = vertices - np.mean(vertices, axis=0)
+    if np.count_nonzero(np.sign(np.sum(C * Nv, axis=1))) > len(C) / 2:
+        Nv = -Nv
+        Nf = -Nf
+
+    return Nv, Nf
+
 
 def mesh_normals(vertices, faces, unit=False):
     """
@@ -39,24 +63,6 @@ def mesh_normals(vertices, faces, unit=False):
     if unit:
         Nv = _normit(Nv)
         Nf = _normit(Nf)
-
-    return Nv, Nf
-
-def _mesh_normal(vertices, faces):
-    Nf = np.cross(
-        vertices[faces[:, 1], :] - vertices[faces[:, 0], :],
-        vertices[faces[:, 2], :] - vertices[faces[:, 0], :])
-    Nf = _normit(Nf)
-
-    Nv = np.zeros_like(vertices)
-    for i in range(len(faces)):
-        for j in range(3):
-            Nv[faces[i, j], :] += Nf[i, :]
-
-    C = vertices - np.mean(vertices, axis=0)
-    if np.count_nonzero(np.sign(np.sum(C * Nv, axis=1))) > len(C) / 2:
-        Nv = -Nv
-        Nf = -Nf
 
     return Nv, Nf
 
@@ -165,7 +171,7 @@ def remove_vertices(gifti_surf, vertices_to_remove):
     new_faces = idxs.reshape(-1, 3)
 
     # Create new gifti object
-    normals=None
+    normals = None
     normals_data = [da for da in gifti_surf.darrays if da.intent == nib.nifti1.intent_codes['NIFTI_INTENT_VECTOR']]
     if normals_data:
         normals = normals_data[0].data[vertices_to_keep, :]
@@ -174,36 +180,35 @@ def remove_vertices(gifti_surf, vertices_to_remove):
     return new_gifti
 
 
-
-def downsample_mesh_vtk(vertices, faces, reduction_ratio=0.1):
+def downsample_single_surface(gifti_surf, ds_factor=0.1):
     """
-    Downsample a mesh using the VTK library.
+    Downsample a Gifti surface using the VTK library.
 
-    This function takes a mesh defined by its vertices and faces, and downsamples it using
+    This function takes a Gifti surface defined by its vertices and faces, and downsamples it using
     VTK's vtkDecimatePro algorithm. The reduction ratio determines the degree of downsampling.
-    The function returns the vertices and faces of the downsampled mesh.
+    The function returns the downsampled Gifti surface.
 
     Parameters:
-    vertices (numpy.ndarray): Array of vertices. Each row represents a vertex with its x, y, z coordinates.
-    faces (numpy.ndarray): Array of faces. Each row represents a face with indices of the vertices forming the face.
+    gifti_surf (nibabel.gifti.GiftiImage): The Gifti surface object from which vertices will be removed.
     reduction_ratio (float): The proportion of the mesh to remove. For example, a reduction ratio of 0.1
                              retains 90% of the original mesh.
 
     Returns:
-    tuple: A tuple containing two numpy arrays:
-           - reduced_vertices: The vertices of the downsampled mesh.
-           - reduced_faces: The faces of the downsampled mesh.
+    nibabel.gifti.GiftiImage: A new GiftiImage object with the downsampled surface.
 
     Notes:
     - The input faces array should be triangulated, i.e., each face should consist of exactly three vertex indices.
     - The VTK library is used for mesh decimation, which must be installed and properly configured.
+    - The returned GiftiImage object is a new object; the original `gifti_surf` object is not modified in place.
 
     Example:
     >>> import numpy as np
-    >>> vertices = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]])
-    >>> faces = np.array([[0, 1, 2], [0, 2, 3]])
-    >>> reduced_vertices, reduced_faces = downsample_mesh_vtk(vertices, faces, 0.1)
+    >>> gifti_surf = nib.load('path_to_gifti_file.gii')
+    >>> new_gifti_surf = downsample_single_surface(gifti_surf, 0.1)
     """
+
+    vertices = gifti_surf.darrays[0].data
+    faces = gifti_surf.darrays[1].data
 
     # Convert vertices and faces to a VTK PolyData object
     points = vtkPoints()
@@ -223,7 +228,7 @@ def downsample_mesh_vtk(vertices, faces, reduction_ratio=0.1):
     # Apply vtkDecimatePro for decimation
     decimate = vtkDecimatePro()
     decimate.SetInputData(polydata)
-    decimate.SetTargetReduction(1 - reduction_ratio)
+    decimate.SetTargetReduction(1 - ds_factor)
     decimate.Update()
 
     # Extract the decimated mesh
@@ -237,10 +242,31 @@ def downsample_mesh_vtk(vertices, faces, reduction_ratio=0.1):
     # Assuming the mesh is triangulated, every fourth item is the size (3), followed by three vertex indices
     reduced_faces = face_data.reshape(-1, 4)[:, 1:4]
 
-    return reduced_vertices, reduced_faces
+    new_gifti_surf = create_surf_gifti(reduced_vertices, reduced_faces)
+
+    return new_gifti_surf
 
 
-def downsample_multiple_surfaces(in_surfs, ratio):
+def iterative_downsample_single_surface(gifti_surf, ds_factor=0.1):
+    current_surf = gifti_surf
+    current_vertices = gifti_surf.darrays[0].data.shape[0]
+    target_vertices = int(current_vertices*ds_factor)
+    current_ds_factor = target_vertices / current_vertices
+
+    while current_vertices > target_vertices:
+        # Downsample the mesh
+        current_surf = downsample_single_surface(current_surf, ds_factor=current_ds_factor)
+
+        # Update the current vertices
+        current_vertices = current_surf.darrays[0].data.shape[0]
+
+        current_ds_factor = (target_vertices / current_vertices)*1.25
+        if current_ds_factor>=1:
+            break
+
+    return current_surf
+
+def downsample_multiple_surfaces(in_surfs, ds_factor):
     """
     Downampled multiple surface meshes using the VTK decimation algorithm.
 
@@ -266,16 +292,16 @@ def downsample_multiple_surfaces(in_surfs, ratio):
     >>> import nibabel as nib
     >>> in_surfs = [nib.load('path/to/input_surf1.gii'), nib.load('path/to/input_surf2.gii')]
     >>> ratio = 0.1
-    >>> out_surfs = downsample_multiple_surfaces(in_surfs, ratio)
+    >>> out_surfs = downsample_multiple_surfaces(in_surfs, ds_factor)
     >>> for i, ds_surf in enumerate(out_surfs):
     ...     nib.save(ds_surf, f'path/to/output_surf{i+1}.gii')
     """
-    out_surfs=[]
+    out_surfs = []
 
     primary_surf = in_surfs[0]
-    reduced_vertices, reduced_faces = downsample_mesh_vtk(primary_surf.darrays[0].data,
-                                                          primary_surf.darrays[1].data,
-                                                          reduction_ratio=ratio)
+    ds_primary_surf = iterative_downsample_single_surface(primary_surf, ds_factor=ds_factor)
+    reduced_vertices = ds_primary_surf.darrays[0].data
+    reduced_faces = ds_primary_surf.darrays[1].data
 
     # Find the original vertices closest to the downsampled vertices
     kdtree = KDTree(primary_surf.darrays[0].data)
@@ -299,7 +325,7 @@ def downsample_multiple_surfaces(in_surfs, ratio):
         if len(surf.darrays) > 2 and surf.darrays[2].intent == nib.nifti1.intent_codes['NIFTI_INTENT_VECTOR']:
             reduced_normals = surf.darrays[2].data[orig_vert_idx]
 
-        ds_surf = create_surf_gifti(surf.darrays[0].data[orig_vert_idx,:], reduced_faces, normals=reduced_normals)
+        ds_surf = create_surf_gifti(surf.darrays[0].data[orig_vert_idx, :], reduced_faces, normals=reduced_normals)
         out_surfs.append(ds_surf)
     return out_surfs
 
@@ -405,6 +431,7 @@ def compute_dipole_orientations(method, layer_names, subject_out_dir):
 
         # Compute link vectors
         link_vectors = white_vertices - pial_vertices
+        link_vectors = _normit(link_vectors)
 
         # Replicate link vectors for each layer
         orientations = np.tile(link_vectors, (len(layer_names), 1, 1))
@@ -444,9 +471,12 @@ def compute_dipole_orientations(method, layer_names, subject_out_dir):
             kdtree = KDTree(ds_surf.darrays[0].data)
             _, ds_vert_idx = kdtree.query(orig_surf.darrays[0].data, k=1)
             orig_vtx_norms, _ = mesh_normals(orig_surf.darrays[0].data, orig_surf.darrays[1].data, unit=True)
-            vtx_norms = np.zeros_like(ds_surf.darrays[0].data)
+            vtx_norms, _ = mesh_normals(ds_surf.darrays[0].data, ds_surf.darrays[1].data, unit = True)
             for v_idx in range(vtx_norms.shape[0]):
-                vtx_norms[v_idx, :] = np.mean(orig_vtx_norms[ds_vert_idx == v_idx, :], axis=0)
+                orig_idxs=np.where(ds_vert_idx==v_idx)[0]
+                if len(orig_idxs):
+                    vtx_norms[v_idx, :] = np.mean(orig_vtx_norms[orig_idxs, :], axis=0)
+            vtx_norms = _normit(vtx_norms)
             orientations.append(vtx_norms)
         orientations = np.array(orientations)
 
@@ -597,13 +627,12 @@ def postprocess_freesurfer_surfaces(subj_id,
 
     ## Compute dipole orientations
     orientations = compute_dipole_orientations(orientation, layer_names, subject_out_dir)
-
     for l_idx, layer_name in enumerate(layer_names):
         in_surf_path = os.path.join(subject_out_dir, f'{layer_name}.ds.gii')
         surf = nib.load(in_surf_path)
 
         # Set these link vectors as the normals for the downsampled surface
-        surf.add_gifti_data_array(nib.gifti.GiftiDataArray(data=orientations[l_idx,:,:],
+        surf.add_gifti_data_array(nib.gifti.GiftiDataArray(data=orientations[l_idx, :, :],
                                                            intent=nib.nifti1.intent_codes['NIFTI_INTENT_VECTOR']))
 
         # Save the modified downsampled surface with link vectors as normals
@@ -621,8 +650,183 @@ def postprocess_freesurfer_surfaces(subj_id,
     nib.save(combined, os.path.join(subject_out_dir, out_fname))
 
 
+def compute_mesh_area(gifti_surf, PF=False):
+    """
+    Compute the surface area of a triangle mesh.
 
-if __name__=='__main__':
+    Parameters:
+    M (dict or np.ndarray): A dictionary with 'vertices' (mx3) and 'faces' (nx3) as keys
+                            or a 3xm array of edge distances.
+    PF (bool): If True, return the surface area per face. Default is False.
+
+    Returns:
+    float or np.ndarray: Total surface area or an array of areas per face.
+    """
+    # Extract vertices and faces
+    vertices, faces = gifti_surf.darrays[0].data, gifti_surf.darrays[1].data
+
+    # Compute edge lengths of each triangle
+    A = np.linalg.norm(vertices[faces[:, 1], :] - vertices[faces[:, 0], :], axis=1)
+    B = np.linalg.norm(vertices[faces[:, 2], :] - vertices[faces[:, 1], :], axis=1)
+    C = np.linalg.norm(vertices[faces[:, 2], :] - vertices[faces[:, 0], :], axis=1)
+
+    # Heron's formula for area
+    s = (A + B + C) / 2
+    area = np.sqrt(s * (s - A) * (s - B) * (s - C))
+
+    return np.sum(area) if not PF else area
+
+
+def compute_mesh_adjacency(faces):
+    """
+    Compute the adjacency matrix of a triangle mesh.
+
+    Parameters:
+    faces (nibabel.gifti.GiftiImage): GiftiImage object containing the mesh data.
+
+    Returns:
+    scipy.sparse matrix: Adjacency matrix as a sparse [vxv] array.
+    """
+    N = faces.max() + 1
+    rows = np.hstack((faces[:, 0], faces[:, 0], faces[:, 1], faces[:, 1], faces[:, 2], faces[:, 2]))
+    cols = np.hstack((faces[:, 1], faces[:, 2], faces[:, 0], faces[:, 2], faces[:, 0], faces[:, 1]))
+    data = np.ones(len(rows), dtype=int)
+    A = coo_matrix((data, (rows, cols)), shape=(N, N))
+
+    return A.astype(bool)
+
+
+def compute_mesh_distances(vertices, faces, order=1):
+    """
+    Compute the distance matrix of a triangle mesh from a nibabel gifti object.
+
+    Parameters:
+    gifti_surf (nibabel.gifti.GiftiImage): GiftiImage object containing the mesh data.
+    order (int): 0 for adjacency matrix, 1 for first-order, 2 for second-order distance matrix.
+
+    Returns:
+    scipy.sparse.csr_matrix: Distance matrix.
+    """
+    if order > 2:
+        raise ValueError("High order distance matrix not handled.")
+
+    # Adjacency matrix
+    if order == 0:
+        return compute_mesh_adjacency(faces)
+
+    # Calculate distances for each edge in each triangle
+    # Adjusting the calculation to match MATLAB behavior
+    d0 = vertices[faces[:, 0], :] - vertices[faces[:, 1], :]
+    d1 = vertices[faces[:, 1], :] - vertices[faces[:, 2], :]
+    d2 = vertices[faces[:, 2], :] - vertices[faces[:, 0], :]
+    distances = np.sqrt(np.sum(np.vstack([d0, d1, d2]) ** 2, axis=1))
+
+    # Construct row and column indices
+    row_ind = np.hstack([faces[:, 0], faces[:, 1], faces[:, 2]])
+    col_ind = np.hstack([faces[:, 1], faces[:, 2], faces[:, 0]])
+
+    D = csr_matrix((distances, (row_ind, col_ind)), shape=(vertices.shape[0], vertices.shape[0]))
+    D = (D + D.T) / 2
+
+    if order == 1:
+        return D
+
+    # Second order distance matrix
+    D2 = D.copy()
+    for i in range(vertices.shape[0]):
+        a = D2[i, :].nonzero()[1]
+        for b in a:
+            c = D2[b, :].nonzero()[1]
+            D[i, c] = np.minimum(D[i, c], D2[i, b] + D2[b, c])
+
+    return D
+
+
+def compute_geodesic_distances(vertices, faces, source_indices, max_dist=np.inf):
+    """
+    Compute geodesic distances on a mesh.
+
+    Parameters:
+    vertices (numpy.ndarray): Array of mesh vertices.
+    faces (numpy.ndarray): Array of mesh faces.
+    source_indices (numpy.ndarray): Indices of source vertices.
+    max_dist (float): Maximum distance for geodesic computation.
+
+    Returns:
+    numpy.ndarray: Geodesic distances from source vertices.
+    """
+    D = compute_mesh_distances(vertices, faces)
+
+    dist = np.full(vertices.shape[0], np.inf)
+    for src in source_indices:
+        dist[src] = 0.0
+
+    remaining = np.arange(vertices.shape[0])
+    while remaining.size > 0:
+        u = remaining[np.argmin(dist[remaining])]
+        if dist[u] > max_dist:
+            break
+        remaining = remaining[remaining != u]
+        for v in D.indices[D.indptr[u]:D.indptr[u + 1]]:
+            alt = dist[u] + D.data[D.indptr[u]:D.indptr[u + 1]][D.indices[D.indptr[u]:D.indptr[u + 1]] == v]
+            if alt < dist[v]:
+                dist[v] = alt
+
+    return dist
+
+
+def smoothmesh_multilayer_mm(meshname, fwhm, n_layers, redo=False):
+    """
+    Compute smoothed matrices for a multilayer mesh.
+
+    Parameters:
+    meshname (str): Filename of the mesh (GIFTI format).
+    fwhm (float): Full width at half maximum for smoothing.
+    n_layers (int): Number of layers in the mesh.
+    redo (bool): Recompute matrices if already exist.
+
+    Returns:
+    str: Filename of the saved matrix.
+    """
+    gifti_surf = nib.load(meshname)
+    vertices = gifti_surf.darrays[0].data
+    Ns = vertices.shape[0]
+    Ns_per_layer = Ns // n_layers
+    vertspace = np.mean(np.sqrt(compute_mesh_area(gifti_surf, PF=True)))
+
+    smoothmeshname = os.path.join(os.path.dirname(meshname), f'FWHM{fwhm:3.2f}_{os.path.basename(meshname)}.mat')
+    if os.path.exists(smoothmeshname) and not redo:
+        return smoothmeshname
+
+    if fwhm > vertspace * 100 or fwhm < vertspace / 100:
+        raise ValueError('Mismatch between FWHM and mesh units')
+
+    sigma2 = (fwhm / 2.355) ** 2
+    QG = lil_matrix((Ns, Ns))
+
+    def process_layer(l):
+        QGl = lil_matrix((Ns, Ns_per_layer))
+        for j in range(Ns_per_layer):
+            source_indices = np.array([l * Ns_per_layer + j])
+            dist = compute_geodesic_distances(gifti_surf, source_indices, max_dist=fwhm)
+            mask = dist <= fwhm
+            q = np.exp(-(dist[mask] ** 2) / (2 * sigma2))
+            q /= np.sum(q)
+            QGl[mask, j] = q
+        return QGl
+
+    QG_layers = Parallel(n_jobs=-1)(delayed(process_layer)(l) for l in range(n_layers))
+
+    for l, layer in enumerate(QG_layers):
+        QG[:, (l * Ns_per_layer):((l + 1) * Ns_per_layer)] = layer
+
+    QG = QG.tocsr()
+    savemat(smoothmeshname, {'QG': QG, 'M': gifti_surf}, do_compression=True)
+
+    return smoothmeshname, QG
+
+
+if __name__ == '__main__':
     postprocess_freesurfer_surfaces('sub-104',
                                     './test_output',
                                     'multilayer.2.ds.ds_surf_norm.gii',
