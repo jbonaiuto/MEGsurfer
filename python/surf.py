@@ -677,102 +677,102 @@ def compute_mesh_area(gifti_surf, PF=False):
     return np.sum(area) if not PF else area
 
 
-def compute_mesh_adjacency(faces):
-    """
-    Compute the adjacency matrix of a triangle mesh.
-
-    Parameters:
-    faces (nibabel.gifti.GiftiImage): GiftiImage object containing the mesh data.
-
-    Returns:
-    scipy.sparse matrix: Adjacency matrix as a sparse [vxv] array.
-    """
-    N = faces.max() + 1
-    rows = np.hstack((faces[:, 0], faces[:, 0], faces[:, 1], faces[:, 1], faces[:, 2], faces[:, 2]))
-    cols = np.hstack((faces[:, 1], faces[:, 2], faces[:, 0], faces[:, 2], faces[:, 0], faces[:, 1]))
-    data = np.ones(len(rows), dtype=int)
-    A = coo_matrix((data, (rows, cols)), shape=(N, N))
-
-    return A.astype(bool)
-
-
-def compute_mesh_distances(vertices, faces, order=1):
-    """
-    Compute the distance matrix of a triangle mesh from a nibabel gifti object.
-
-    Parameters:
-    gifti_surf (nibabel.gifti.GiftiImage): GiftiImage object containing the mesh data.
-    order (int): 0 for adjacency matrix, 1 for first-order, 2 for second-order distance matrix.
-
-    Returns:
-    scipy.sparse.csr_matrix: Distance matrix.
-    """
-    if order > 2:
-        raise ValueError("High order distance matrix not handled.")
-
-    # Adjacency matrix
-    if order == 0:
-        return compute_mesh_adjacency(faces)
-
-    # Calculate distances for each edge in each triangle
-    # Adjusting the calculation to match MATLAB behavior
-    d0 = vertices[faces[:, 0], :] - vertices[faces[:, 1], :]
-    d1 = vertices[faces[:, 1], :] - vertices[faces[:, 2], :]
-    d2 = vertices[faces[:, 2], :] - vertices[faces[:, 0], :]
-    distances = np.sqrt(np.sum(np.vstack([d0, d1, d2]) ** 2, axis=1))
-
-    # Construct row and column indices
-    row_ind = np.hstack([faces[:, 0], faces[:, 1], faces[:, 2]])
-    col_ind = np.hstack([faces[:, 1], faces[:, 2], faces[:, 0]])
-
-    D = csr_matrix((distances, (row_ind, col_ind)), shape=(vertices.shape[0], vertices.shape[0]))
-    D = (D + D.T) / 2
-
-    if order == 1:
-        return D
-
-    # Second order distance matrix
-    D2 = D.copy()
-    for i in range(vertices.shape[0]):
-        a = D2[i, :].nonzero()[1]
-        for b in a:
-            c = D2[b, :].nonzero()[1]
-            D[i, c] = np.minimum(D[i, c], D2[i, b] + D2[b, c])
-
-    return D
+# def compute_mesh_adjacency(faces):
+#     """
+#     Compute the adjacency matrix of a triangle mesh.
+#
+#     Parameters:
+#     faces (nibabel.gifti.GiftiImage): GiftiImage object containing the mesh data.
+#
+#     Returns:
+#     scipy.sparse matrix: Adjacency matrix as a sparse [vxv] array.
+#     """
+#     N = faces.max() + 1
+#     rows = np.hstack((faces[:, 0], faces[:, 0], faces[:, 1], faces[:, 1], faces[:, 2], faces[:, 2]))
+#     cols = np.hstack((faces[:, 1], faces[:, 2], faces[:, 0], faces[:, 2], faces[:, 0], faces[:, 1]))
+#     data = np.ones(len(rows), dtype=int)
+#     A = coo_matrix((data, (rows, cols)), shape=(N, N))
+#
+#     return A.astype(bool)
 
 
-def compute_geodesic_distances(vertices, faces, source_indices, max_dist=np.inf):
-    """
-    Compute geodesic distances on a mesh.
+# def compute_mesh_distances(vertices, faces, order=1):
+#     """
+#     Compute the distance matrix of a triangle mesh from a nibabel gifti object.
+#
+#     Parameters:
+#     gifti_surf (nibabel.gifti.GiftiImage): GiftiImage object containing the mesh data.
+#     order (int): 0 for adjacency matrix, 1 for first-order, 2 for second-order distance matrix.
+#
+#     Returns:
+#     scipy.sparse.csr_matrix: Distance matrix.
+#     """
+#     if order > 2:
+#         raise ValueError("High order distance matrix not handled.")
+#
+#     # Adjacency matrix
+#     if order == 0:
+#         return compute_mesh_adjacency(faces)
+#
+#     # Calculate distances for each edge in each triangle
+#     # Adjusting the calculation to match MATLAB behavior
+#     d0 = vertices[faces[:, 0], :] - vertices[faces[:, 1], :]
+#     d1 = vertices[faces[:, 1], :] - vertices[faces[:, 2], :]
+#     d2 = vertices[faces[:, 2], :] - vertices[faces[:, 0], :]
+#     distances = np.sqrt(np.sum(np.vstack([d0, d1, d2]) ** 2, axis=1))
+#
+#     # Construct row and column indices
+#     row_ind = np.hstack([faces[:, 0], faces[:, 1], faces[:, 2]])
+#     col_ind = np.hstack([faces[:, 1], faces[:, 2], faces[:, 0]])
+#
+#     D = csr_matrix((distances, (row_ind, col_ind)), shape=(vertices.shape[0], vertices.shape[0]))
+#     D = (D + D.T) / 2
+#
+#     if order == 1:
+#         return D
+#
+#     # Second order distance matrix
+#     D2 = D.copy()
+#     for i in range(vertices.shape[0]):
+#         a = D2[i, :].nonzero()[1]
+#         for b in a:
+#             c = D2[b, :].nonzero()[1]
+#             D[i, c] = np.minimum(D[i, c], D2[i, b] + D2[b, c])
+#
+#     return D
 
-    Parameters:
-    vertices (numpy.ndarray): Array of mesh vertices.
-    faces (numpy.ndarray): Array of mesh faces.
-    source_indices (numpy.ndarray): Indices of source vertices.
-    max_dist (float): Maximum distance for geodesic computation.
 
-    Returns:
-    numpy.ndarray: Geodesic distances from source vertices.
-    """
-    D = compute_mesh_distances(vertices, faces)
-
-    dist = np.full(vertices.shape[0], np.inf)
-    for src in source_indices:
-        dist[src] = 0.0
-
-    remaining = np.arange(vertices.shape[0])
-    while remaining.size > 0:
-        u = remaining[np.argmin(dist[remaining])]
-        if dist[u] > max_dist:
-            break
-        remaining = remaining[remaining != u]
-        for v in D.indices[D.indptr[u]:D.indptr[u + 1]]:
-            alt = dist[u] + D.data[D.indptr[u]:D.indptr[u + 1]][D.indices[D.indptr[u]:D.indptr[u + 1]] == v]
-            if alt < dist[v]:
-                dist[v] = alt
-
-    return dist
+# def compute_geodesic_distances(vertices, faces, source_indices, max_dist=np.inf):
+#     """
+#     Compute geodesic distances on a mesh.
+#
+#     Parameters:
+#     vertices (numpy.ndarray): Array of mesh vertices.
+#     faces (numpy.ndarray): Array of mesh faces.
+#     source_indices (numpy.ndarray): Indices of source vertices.
+#     max_dist (float): Maximum distance for geodesic computation.
+#
+#     Returns:
+#     numpy.ndarray: Geodesic distances from source vertices.
+#     """
+#     D = compute_mesh_distances(vertices, faces)
+#
+#     dist = np.full(vertices.shape[0], np.inf)
+#     for src in source_indices:
+#         dist[src] = 0.0
+#
+#     remaining = np.arange(vertices.shape[0])
+#     while remaining.size > 0:
+#         u = remaining[np.argmin(dist[remaining])]
+#         if dist[u] > max_dist:
+#             break
+#         remaining = remaining[remaining != u]
+#         for v in D.indices[D.indptr[u]:D.indptr[u + 1]]:
+#             alt = dist[u] + D.data[D.indptr[u]:D.indptr[u + 1]][D.indices[D.indptr[u]:D.indptr[u + 1]] == v]
+#             if alt < dist[v]:
+#                 dist[v] = alt
+#
+#     return dist
 
 
 def smoothmesh_multilayer_mm(meshname, fwhm, n_layers, redo=False):
