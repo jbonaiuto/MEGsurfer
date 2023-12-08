@@ -1,10 +1,10 @@
 import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 import nibabel as nib
-from joblib import Parallel, delayed
-from scipy.io import savemat
-from scipy.sparse import coo_matrix, csr_matrix, lil_matrix
+from scipy.sparse import coo_matrix
 from scipy.spatial import KDTree
 
 from vtkmodules.vtkCommonCore import vtkPoints
@@ -13,7 +13,8 @@ from vtkmodules.vtkFiltersCore import vtkDecimatePro
 from vtkmodules.util.numpy_support import vtk_to_numpy
 
 from scipy.spatial import Delaunay
-
+from csurf import compute_geodesic_distances
+import scipy.io as sio
 
 def _normit(N):
     normN = np.sqrt(np.sum(N ** 2, axis=1))
@@ -677,102 +678,23 @@ def compute_mesh_area(gifti_surf, PF=False):
     return np.sum(area) if not PF else area
 
 
-# def compute_mesh_adjacency(faces):
-#     """
-#     Compute the adjacency matrix of a triangle mesh.
-#
-#     Parameters:
-#     faces (nibabel.gifti.GiftiImage): GiftiImage object containing the mesh data.
-#
-#     Returns:
-#     scipy.sparse matrix: Adjacency matrix as a sparse [vxv] array.
-#     """
-#     N = faces.max() + 1
-#     rows = np.hstack((faces[:, 0], faces[:, 0], faces[:, 1], faces[:, 1], faces[:, 2], faces[:, 2]))
-#     cols = np.hstack((faces[:, 1], faces[:, 2], faces[:, 0], faces[:, 2], faces[:, 0], faces[:, 1]))
-#     data = np.ones(len(rows), dtype=int)
-#     A = coo_matrix((data, (rows, cols)), shape=(N, N))
-#
-#     return A.astype(bool)
+def compute_mesh_distances(vertices, faces):
+    # Compute the differences
+    d0 = vertices[faces[:, 0], :] - vertices[faces[:, 1], :]
+    d1 = vertices[faces[:, 1], :] - vertices[faces[:, 2], :]
+    d2 = vertices[faces[:, 2], :] - vertices[faces[:, 0], :]
 
+    # Flatten the arrays for creating a COO matrix
+    rows = np.hstack([faces[:, 0], faces[:, 1], faces[:, 2]])
+    cols = np.hstack([faces[:, 1], faces[:, 2], faces[:, 0]])
+    data = np.sqrt(np.sum(np.vstack([d0**2, d1**2, d2**2]), axis=1))
 
-# def compute_mesh_distances(vertices, faces, order=1):
-#     """
-#     Compute the distance matrix of a triangle mesh from a nibabel gifti object.
-#
-#     Parameters:
-#     gifti_surf (nibabel.gifti.GiftiImage): GiftiImage object containing the mesh data.
-#     order (int): 0 for adjacency matrix, 1 for first-order, 2 for second-order distance matrix.
-#
-#     Returns:
-#     scipy.sparse.csr_matrix: Distance matrix.
-#     """
-#     if order > 2:
-#         raise ValueError("High order distance matrix not handled.")
-#
-#     # Adjacency matrix
-#     if order == 0:
-#         return compute_mesh_adjacency(faces)
-#
-#     # Calculate distances for each edge in each triangle
-#     # Adjusting the calculation to match MATLAB behavior
-#     d0 = vertices[faces[:, 0], :] - vertices[faces[:, 1], :]
-#     d1 = vertices[faces[:, 1], :] - vertices[faces[:, 2], :]
-#     d2 = vertices[faces[:, 2], :] - vertices[faces[:, 0], :]
-#     distances = np.sqrt(np.sum(np.vstack([d0, d1, d2]) ** 2, axis=1))
-#
-#     # Construct row and column indices
-#     row_ind = np.hstack([faces[:, 0], faces[:, 1], faces[:, 2]])
-#     col_ind = np.hstack([faces[:, 1], faces[:, 2], faces[:, 0]])
-#
-#     D = csr_matrix((distances, (row_ind, col_ind)), shape=(vertices.shape[0], vertices.shape[0]))
-#     D = (D + D.T) / 2
-#
-#     if order == 1:
-#         return D
-#
-#     # Second order distance matrix
-#     D2 = D.copy()
-#     for i in range(vertices.shape[0]):
-#         a = D2[i, :].nonzero()[1]
-#         for b in a:
-#             c = D2[b, :].nonzero()[1]
-#             D[i, c] = np.minimum(D[i, c], D2[i, b] + D2[b, c])
-#
-#     return D
+    # Create the sparse matrix
+    D_coo = coo_matrix((data, (rows, cols)), shape=(vertices.shape[0], vertices.shape[0]))
 
-
-# def compute_geodesic_distances(vertices, faces, source_indices, max_dist=np.inf):
-#     """
-#     Compute geodesic distances on a mesh.
-#
-#     Parameters:
-#     vertices (numpy.ndarray): Array of mesh vertices.
-#     faces (numpy.ndarray): Array of mesh faces.
-#     source_indices (numpy.ndarray): Indices of source vertices.
-#     max_dist (float): Maximum distance for geodesic computation.
-#
-#     Returns:
-#     numpy.ndarray: Geodesic distances from source vertices.
-#     """
-#     D = compute_mesh_distances(vertices, faces)
-#
-#     dist = np.full(vertices.shape[0], np.inf)
-#     for src in source_indices:
-#         dist[src] = 0.0
-#
-#     remaining = np.arange(vertices.shape[0])
-#     while remaining.size > 0:
-#         u = remaining[np.argmin(dist[remaining])]
-#         if dist[u] > max_dist:
-#             break
-#         remaining = remaining[remaining != u]
-#         for v in D.indices[D.indptr[u]:D.indptr[u + 1]]:
-#             alt = dist[u] + D.data[D.indptr[u]:D.indptr[u + 1]][D.indices[D.indptr[u]:D.indptr[u + 1]] == v]
-#             if alt < dist[v]:
-#                 dist[v] = alt
-#
-#     return dist
+    # Convert to CSR and symmetrize
+    D_csr = (D_coo.tocsr() + D_coo.transpose().tocsr()) / 2
+    return D_csr
 
 
 def smoothmesh_multilayer_mm(meshname, fwhm, n_layers, redo=False):
@@ -790,40 +712,58 @@ def smoothmesh_multilayer_mm(meshname, fwhm, n_layers, redo=False):
     """
     gifti_surf = nib.load(meshname)
     vertices = gifti_surf.darrays[0].data
+    faces = gifti_surf.darrays[1].data
     Ns = vertices.shape[0]
     Ns_per_layer = Ns // n_layers
     vertspace = np.mean(np.sqrt(compute_mesh_area(gifti_surf, PF=True)))
+    spacing = fwhm / vertspace
 
-    smoothmeshname = os.path.join(os.path.dirname(meshname), f'FWHM{fwhm:3.2f}_{os.path.basename(meshname)}.mat')
+    print(f'FWHM of {fwhm:3.2f} is approx {spacing:3.2f} times vertex spacing')
+
+    # Extract the directory and the base name without extension
+    mesh_dir = os.path.dirname(meshname)
+    mesh_base_name, _ = os.path.splitext(os.path.basename(meshname))
+
+    smoothmeshname = os.path.join(mesh_dir, f'FWHM{fwhm:3.2f}_{mesh_base_name}.mat')
     if os.path.exists(smoothmeshname) and not redo:
         return smoothmeshname
 
-    if fwhm > vertspace * 100 or fwhm < vertspace / 100:
-        raise ValueError('Mismatch between FWHM and mesh units')
-
     sigma2 = (fwhm / 2.355) ** 2
-    QG = lil_matrix((Ns, Ns))
 
-    def process_layer(l):
-        QGl = lil_matrix((Ns, Ns_per_layer))
-        for j in range(Ns_per_layer):
-            source_indices = np.array([l * Ns_per_layer + j])
-            dist = compute_geodesic_distances(gifti_surf, source_indices, max_dist=fwhm)
+    distance_matrix = compute_mesh_distances(vertices.astype(np.float64), faces)
+
+    def process_vertex(j):
+        rows_vertex, cols_vertex, data_vertex = [], [], []
+        for l in range(n_layers):
+            D_layer = distance_matrix[l * Ns_per_layer:(l + 1) * Ns_per_layer, l * Ns_per_layer:(l + 1) * Ns_per_layer]
+            source_indices = [j % Ns_per_layer]
+            dist = compute_geodesic_distances(D_layer, source_indices, max_dist=fwhm)
+
             mask = dist <= fwhm
             q = np.exp(-(dist[mask] ** 2) / (2 * sigma2))
+            q = q * (q > np.exp(-8))
             q /= np.sum(q)
-            QGl[mask, j] = q
-        return QGl
 
-    QG_layers = Parallel(n_jobs=-1)(delayed(process_layer)(l) for l in range(n_layers))
+            rows_vertex.extend(np.full(sum(mask), l * Ns_per_layer + j % Ns_per_layer))
+            cols_vertex.extend(np.where(mask)[0] + l * Ns_per_layer)
+            data_vertex.extend(q)
+        return rows_vertex, cols_vertex, data_vertex
 
-    for l, layer in enumerate(QG_layers):
-        QG[:, (l * Ns_per_layer):((l + 1) * Ns_per_layer)] = layer
+    # Parallel computation for each vertex
+    with ThreadPoolExecutor(max_workers=Ns_per_layer) as executor:
+        # with ProcessPoolExecutor(max_workers=Ns_per_layer) as executor:
+        results = list(executor.map(process_vertex, range(Ns_per_layer)))
 
-    QG = QG.tocsr()
-    savemat(smoothmeshname, {'QG': QG, 'M': gifti_surf}, do_compression=True)
+    # Aggregate results from all vertices
+    rows, cols, data = zip(*results)
+    rows = np.concatenate(rows)
+    cols = np.concatenate(cols)
+    data = np.concatenate(data)
+    QG = coo_matrix((data, (rows, cols)), shape=(Ns, Ns)).tocsr()
 
-    return smoothmeshname, QG
+    sio.savemat(smoothmeshname, {'QG': QG, 'faces': faces}, do_compression=True)
+
+    return smoothmeshname
 
 
 if __name__ == '__main__':
