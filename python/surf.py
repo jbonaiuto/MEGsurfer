@@ -1,6 +1,6 @@
 import os
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
+from joblib import Parallel, delayed
 
 import numpy as np
 import nibabel as nib
@@ -749,10 +749,10 @@ def smoothmesh_multilayer_mm(meshname, fwhm, n_layers, redo=False, n_jobs=-1):
             data_vertex.extend(q)
         return rows_vertex, cols_vertex, data_vertex
 
-    # Parallel computation for each vertex
-    with ThreadPoolExecutor(max_workers=n_jobs) as executor:
-        # with ProcessPoolExecutor(max_workers=Ns_per_layer) as executor:
-        results = list(executor.map(process_vertex, range(Ns_per_layer)))
+    # Parallel computation for each vertex using joblib
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(process_vertex)(j) for j in range(Ns_per_layer)
+    )
 
     # Aggregate results from all vertices
     rows, cols, data = zip(*results)
@@ -760,6 +760,9 @@ def smoothmesh_multilayer_mm(meshname, fwhm, n_layers, redo=False, n_jobs=-1):
     cols = np.concatenate(cols)
     data = np.concatenate(data)
     QG = coo_matrix((data, (rows, cols)), shape=(Ns, Ns)).tocsr()
+
+    # Add 1 for matlab
+    faces=faces+1
 
     sio.savemat(smoothmeshname, {'QG': QG, 'faces': faces}, do_compression=True)
 
