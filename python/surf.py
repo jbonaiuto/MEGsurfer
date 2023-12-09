@@ -697,7 +697,7 @@ def compute_mesh_distances(vertices, faces):
     return D_csr
 
 
-def smoothmesh_multilayer_mm(meshname, fwhm, n_layers, redo=False):
+def smoothmesh_multilayer_mm(meshname, fwhm, n_layers, redo=False, n_jobs=-1):
     """
     Compute smoothed matrices for a multilayer mesh.
 
@@ -750,7 +750,7 @@ def smoothmesh_multilayer_mm(meshname, fwhm, n_layers, redo=False):
         return rows_vertex, cols_vertex, data_vertex
 
     # Parallel computation for each vertex
-    with ThreadPoolExecutor(max_workers=Ns_per_layer) as executor:
+    with ThreadPoolExecutor(max_workers=n_jobs) as executor:
         # with ProcessPoolExecutor(max_workers=Ns_per_layer) as executor:
         results = list(executor.map(process_vertex, range(Ns_per_layer)))
 
