@@ -1,4 +1,6 @@
-function [Dnew,meshsourceind]=spm_eeg_simulate(D,prefix,patchmni,simsignal,ormni,woi,whitenoise,SNRdB,trialind,mnimesh,dipfwhm,nAmdipmom);
+function [Dnew,meshsourceind]=spm_eeg_simulate(D, prefix, patchmni,...
+    simsignal, ormni, woi, whitenoise, SNRdB, trialind, mnimesh, dipfwhm,...
+    nAmdipmom, noiseD)
 %% Simulate a number of MSP patches at specified locations on existing mesh
 %
 % Created by:   Jose David Lopez - ralph82co@gmail.com
@@ -9,6 +11,7 @@ function [Dnew,meshsourceind]=spm_eeg_simulate(D,prefix,patchmni,simsignal,ormni
 %% prefix : prefix of new simulated dataset
 %% patchmni : patch centres in mni space or patch indices
 %% simsignal : Nsources x time series in nAm withinn woi
+%% ormni : ?
 %% woi: window of interest in seconds
 %% whitenoise level in rms femto Tesla or micro volts
 %% SNRdB power signal to noise ratio in dBs
@@ -18,7 +21,7 @@ function [Dnew,meshsourceind]=spm_eeg_simulate(D,prefix,patchmni,simsignal,ormni
 %% Outputs
 %% Dnew- new dataset
 %% meshsourceind- vertex indices of sources on the mesh
-% $Id: spm_eeg_simulate.m 7118 2017-06-20 10:33:27Z guillaume $
+% $Id: spm_eeg_simulate.m 6424 2015-04-24 14:33:33Z gareth $
 
 %% LOAD IN ORGINAL DATA
 useind=1; % D to use
@@ -59,13 +62,17 @@ if nargin<10,
     mnimesh=[];
 end;
 
-
-
 if nargin<11
     dipfwhm=[]; %% number of iterations used to smooth patch out (more iterations, larger patch)
 end;
 
+if nargin<12
+    nAmdipmom=1;
+end;
 
+if nargin<13
+    noiseD=[];
+end
 
 if isempty(prefix),
     prefix='sim';
@@ -91,7 +98,7 @@ if isempty(patchmni),
 end;
 
 
-if ~xor(isempty(whitenoise),isempty(SNRdB))
+if ~xor(xor(~isempty(whitenoise),~isempty(SNRdB)),~isempty(noiseD))
     error('Must specify either white noise level or sensor level SNR');
 end;
 
@@ -100,10 +107,10 @@ end;
 
 
 [a1 b1 c1]=fileparts(D{useind}.fname);
-newfilename=[prefix b1 '.mat'];
+newfilename=[prefix b1];
 
 %% forcing overwrite of an existing file
-Dnew=D{useind}.clone(newfilename);
+Dnew=D{useind}.clone([prefix b1]);
 
 
 if isempty(trialind)
@@ -151,13 +158,18 @@ end;
 Ndip = size(simsignal,1);       % Number of dipoles
 
 
+%if isequal(modstr, 'MEG')
+try
+    chanind = Dnew.indchantype({'MEG', 'MEGPLANAR'}, 'GOOD');
+catch
+    chanind = Dnew.indchantype(modality(D{1}), 'GOOD');
+end
 
 sensorunits = Dnew.units; %% of sensors (T or fT)
 
 try Dnew.inv{val}.forward.vol.unit, %% units of forward model for distance (m or mm)
     switch(Dnew.inv{val}.forward.vol.unit), %% correct for non-SI lead field scaling
         case 'mm'
-            
             Lscale=1000*1000;
         case 'cm'
             
@@ -167,15 +179,11 @@ try Dnew.inv{val}.forward.vol.unit, %% units of forward model for distance (m or
             
         otherwise
             error('unknown volume unit');
-            
     end;
 catch
     disp('No distance units found');
     Lscale=1.0;
 end;
-
-
-
 
 
 Ntrials = Dnew.ntrials;             % Number of trials
@@ -203,15 +211,12 @@ end
 
 
 labels=Dnew.chanlabels(chanind);
-
-
-%chans = Dnew.indchantype(modstr, 'GOOD');
-
+chan_idx=Dnew.indchantype('MEG');
 simscale=1.0;
 
 try
     %% white noise is input in fT or uV so convert it to data sensorunits
-    switch sensorunits{chanind(1)}
+    switch sensorunits{chan_idx(1)}
         case 'T'
             simscale=1e-15; %% convert from fT to T
             %whitenoise=whitenoise./1e15; %% rms femto Tesla
@@ -238,39 +243,56 @@ end;
 
 whitenoise=whitenoise.*simscale;
 
-
-
 if ~isempty(ormni), %%%% DIPOLE SIMULATION
     disp('SIMULATING DIPOLE SOURCES');
+
+    Nchans=length(chanind);
+
     if size(ormni)~=size(patchmni),
         error('A 3D orientation must be specified for each source location');
     end;
     
     posdipmm=Dnew.inv{val}.datareg.fromMNI*[patchmni ones(size(ormni,1),1)]'; %% put into MEG space
-    posdipmm=posdipmm(1:3)';
+    posdipmm=posdipmm(1:3,:)';
+
     %% need to make a pure rotation for orientation transform to native space
-    M1 = Dnew.inv{val}.datareg.fromMNI;
-    [U, L, V] = svd(M1(1:3, 1:3));
-    ordip=ormni*(U*V');
-    ordip=ordip./sqrt(dot(ordip,ordip)); %% make sure it is unit vector
+    M=Dnew.inv{val}.datareg.fromMNI*Dnew.inv{val}.mesh.Affine;
+    ordip=[ormni ones(size(ormni,1),1)]*inv(M')';
+    ordip=ordip(:,1:3);
+
+%     M1 = Dnew.inv{val}.datareg.fromMNI';
+%     [U, L, V] = svd(M1(1:3, 1:3));
+%     ordip=ormni*(U*V');
+    for i=1:size(ordip,1)
+        ordip(i,:)=ordip(i,:)./sqrt(dot(ordip(i,:),ordip(i,:))); %% make sure it is unit vector
+    end
     
     %% NB COULD ADD A PURE DIPOLE SIMULATION IN FUTURE
     sens=Dnew.inv{val}.forward.sensors;
     vol=Dnew.inv{val}.forward.vol;
+
+    sensorind=Dnew.indchantype({'MEG', 'MEGPLANAR','REFMAG','REFGRAD'});
     
+    [vol, sens] = ft_prepare_vol_sens(vol, sens);
     
-    %% Get good channels
-    useind=Dnew.indchantype(Dnew.modality);
-    useind=setxor(Dnew.badchannels,goodchans);
-    
-    
-    tmp=zeros(length(chanind),Dnew.nsamples);
-    
-    for i=1:Ndip,
-        gmn = ft_compute_leadfield(posdipmm(i,:)*1e-3, sens, vol,  'dipoleunit', 'nA*m','chanunit',sensorunits);
-        gain=gmn*ordip';
-        tmp(:,f1ind)=tmp(:,f1ind)+gain(usedind,:)*simsignal(i,:);
-    end; % for i
+    if length(size(simsignal))==2
+        tmp=zeros(length(chanind),Dnew.nsamples);
+
+        for i=1:Ndip,
+            gmn = ft_compute_leadfield(posdipmm(i,:)*1e-3, sens, vol,  'dipoleunit', 'nA*m','chanunit',sensorunits(sensorind));
+            gain=gmn(chanind-3,:)*ordip(i,:)'*nAmdipmom(i);
+            tmp(:,f1ind)=tmp(:,f1ind)+gain*simsignal(i,:);
+        end; % for i
+    else
+        tmp=zeros(length(chanind),Dnew.nsamples,Dnew.ntrials);
+        for i=1:Ndip,
+            gmn = ft_compute_leadfield(posdipmm(i,:)*1e-3, sens, vol,  'dipoleunit', 'nA*m','chanunit',sensorunits(sensorind));
+            gain=gmn(chanind-3,:)*ordip(i,:)'*nAmdipmom(i);
+            for j=1:Dnew.ntrials
+                tmp(:,f1ind,j)=tmp(:,f1ind,j)+gain*squeeze(simsignal(i,:,j));
+            end
+        end; % for i
+    end
     
     
 else %%% CURRENT DENSITY ON SURFACE SIMULATION
@@ -332,27 +354,51 @@ else %%% CURRENT DENSITY ON SURFACE SIMULATION
 end; % if ori
 
 
-allchanstd=std(tmp');
+allchanstd=std(tmp,[],2);
+if length(size(simsignal))==3
+    allchanstd=squeeze(mean(allchanstd,3));
+end
 meanrmssignal=mean(allchanstd);
 
 
 if ~isempty(SNRdB),
-    whitenoise = meanrmssignal.*(10^(-SNRdB/20));
+    whitenoise = full(meanrmssignal).*(10^(-SNRdB/20));
     disp(sprintf('Setting white noise to give sensor level SNR of %dB',SNRdB));
 end;
 
-Qe=eye(Nchans).*(whitenoise^2); %% sensor level noise
+Qe=[];
+if ~isempty(whitenoise)
+    snr=full(-20*log10(whitenoise/meanrmssignal));
+    disp(sprintf('Noise level=%.3f fT RMS, SNR=%.3f dB', whitenoise, snr));
+    Qe=eye(Nchans).*(whitenoise^2); %% sensor level noise
+elseif ~isempty(noiseD)
+    noiseLevel=mean(squeeze(std(mean(noiseD(:,:,:),3),[],2)));
+    snr=full(-20*log10(noiseLevel/meanrmssignal));
+    disp(sprintf('Noise level=%.3f fT RMS, SNR=%.3f dB', noiseLevel, snr));
+    Qe=eye(Nchans).*(noiseLevel^2);
+end
 
 
 YY=zeros(length(chanind),length(chanind));
 n=0;
 for i=1:Ntrials
     if any(i == trialind), %% only add signal to specific trials
-        Dnew(chanind,:,i) = full(tmp);
+        if length(size(tmp))==2
+            Dnew(chanind,:,i) = full(tmp);
+        else
+            Dnew(chanind,:,i) = squeeze(tmp(:,:,i));
+        end
     else
-        Dnew(chanind,:,i)=zeros(size(tmp));
+        Dnew(chanind,:,i)=zeros(size(tmp,1),size(tmp,2));
     end;
-    Dnew(:,:,i)=Dnew(:,:,i)+randn(size(Dnew(:,:,i))).*whitenoise; %% add white noise in fT
+    if isempty(noiseD)
+        Dnew(:,:,i)=Dnew(:,:,i)+randn(size(Dnew(:,:,i))).*whitenoise; %% add white noise in fT
+        %Dnew(:,:,i)=Dnew(:,:,i)+pinknoise(size(Dnew(:,:,i),1),size(Dnew(:,:,i),2)).*whitenoise; %% add white noise in fT
+    else
+        good_noise_trials=setdiff([1:noiseD.ntrials],noiseD.badtrials);
+        noise_channel=good_noise_trials(randi(length(good_noise_trials),1));
+        Dnew(chanind,:,i)=Dnew(chanind,:,i)+noiseD(chanind,:,noise_channel);
+    end
     y=squeeze(Dnew(chanind,:,i));
     YY=YY+y*y';
     n=n+size(y,2); %% number of samples
@@ -361,25 +407,28 @@ end
 YY=YY./n; %% NORMALIZE HERE
 
 F=[];
-UL=L;
-save(priorfname,'Qp','Qe','UL','F', spm_get_defaults('mat.format'));
+%UL=L;
+if isempty(ormni)
+    %save(priorfname,'Qp','Qe','UL','F');
+    save(priorfname,'Qp','Qe','F');
+    if ~isempty(Qe)
+        figure;
+        ploton=1;
+        [LQpL,Q,sumLQpL,QE,Csensor]=spm_eeg_assemble_priors(L,Qp,{Qe},ploton);
 
-figure;
-ploton=1;
-[LQpL,Q,sumLQpL,QE,Csensor]=spm_eeg_assemble_priors(L,Qp,{Qe},ploton);
 
-
-figure;
-subplot(3,1,1);
-imagesc(YY);colorbar;
-title('Empirical data covariance per sample: YY');
-subplot(3,1,2);
-imagesc(Csensor);colorbar;
-title('Prior total sensor covariance');
-subplot(3,1,3);
-imagesc(YY-Csensor);colorbar;
-title('Difference');
-
+        figure;
+        subplot(3,1,1);
+        imagesc(YY);colorbar;
+        title('Empirical data covariance per sample: YY');
+        subplot(3,1,2);
+        imagesc(Csensor);colorbar;
+        title('Prior total sensor covariance');
+        subplot(3,1,3);
+        imagesc(YY-Csensor);colorbar;
+        title('Difference');
+    end
+end
 
 
 
@@ -408,14 +457,22 @@ if isempty(ormni)
 end;
 figure
 
-aux = tmp(tmpind(end),:);
+if length(size(tmp))==2
+    aux = tmp(tmpind(end),:);
+else
+    aux = squeeze(mean(tmp(tmpind(end),:,:),3));
+end
 subplot(2,1,1);
 plot(Dnew.time,Dnew(dnewind(end),:,1),Dnew.time,aux,'r');
 title('Measured activity over max sensor');
 legend('Noisy','Noiseless');
 ylabel(sensorunits{chanind(1)});
 subplot(2,1,2);
-aux = tmp(tmpind(floor(length(tmpind)/2)),:);
+if length(size(tmp))==2
+    aux = tmp(tmpind(floor(length(tmpind)/2)),:);
+else
+    aux = squeeze(mean(tmp(tmpind(floor(length(tmpind)/2)),:,:),3));
+end
 plot(Dnew.time,Dnew(dnewind(floor(length(tmpind)/2)),:,1),Dnew.time,aux,'r');
 title('Measured activity over median sensor');
 legend('Noisy','Noiseless');
@@ -425,4 +482,3 @@ xlabel('Time in sec');
 Dnew.save;
 
 fprintf('\n Finish\n')
-
