@@ -1,5 +1,5 @@
 function sim_file=simulate_sinusoidal_patch(data_file, mri_fname,...
-    mesh_fname, nas, lpa, rpa, sim_vertex, invwoi, invfoi, dipole_moment,...
+    mesh_fname, nas, lpa, rpa, sim_vertex, invwoi, freq, dipole_moment,...
     sim_patch_size, SNR)
 
 addpath('/home/bonaiuto/Dropbox/Toolboxes/DANC_spm12/spm12');
@@ -9,7 +9,6 @@ spm('defaults','eeg');
 spm_jobman('initcfg');
 
 invwoi = cell2mat(invwoi);
-invfoi = cell2mat(invfoi);
 nas=cell2mat(nas);
 lpa=cell2mat(lpa);
 rpa=cell2mat(rpa);
@@ -42,17 +41,25 @@ Dmesh=spm_eeg_load(data_file);
 simpos=Dmesh.inv{1}.mesh.tess_mni.vert(sim_vertex,:); 
 prefix=sprintf('sim_mesh.%d.',sim_vertex);
 
-% Simulate source 
-matlabbatch=[];
-matlabbatch{1}.spm.meeg.source.simulate.D = {data_file};
-matlabbatch{1}.spm.meeg.source.simulate.val = 1;
-matlabbatch{1}.spm.meeg.source.simulate.prefix = prefix;
-matlabbatch{1}.spm.meeg.source.simulate.whatconditions.all = 1;
-matlabbatch{1}.spm.meeg.source.simulate.isinversion.setsources.woi = invwoi;
-matlabbatch{1}.spm.meeg.source.simulate.isinversion.setsources.isSin.foi = mean(invfoi);
-matlabbatch{1}.spm.meeg.source.simulate.isinversion.setsources.dipmom = [dipole_moment sim_patch_size];
-matlabbatch{1}.spm.meeg.source.simulate.isinversion.setsources.locs = simpos;
-matlabbatch{1}.spm.meeg.source.simulate.isSNR.setSNR = SNR;               
-[a,b]=spm_jobman('run', matlabbatch);
+% % Simulate source 
+% matlabbatch=[];
+% matlabbatch{1}.spm.meeg.source.simulate.D = {data_file};
+% matlabbatch{1}.spm.meeg.source.simulate.val = 1;
+% matlabbatch{1}.spm.meeg.source.simulate.prefix = prefix;
+% matlabbatch{1}.spm.meeg.source.simulate.whatconditions.all = 1;
+% matlabbatch{1}.spm.meeg.source.simulate.isinversion.setsources.woi = invwoi;
+% matlabbatch{1}.spm.meeg.source.simulate.isinversion.setsources.isSin.foi = mean(invfoi);
+% matlabbatch{1}.spm.meeg.source.simulate.isinversion.setsources.dipmom = [dipole_moment sim_patch_size];
+% matlabbatch{1}.spm.meeg.source.simulate.isinversion.setsources.locs = simpos;
+% matlabbatch{1}.spm.meeg.source.simulate.isSNR.setSNR = SNR;               
+% [a,b]=spm_jobman('run', matlabbatch);
+% 
+% sim_file=a{1}.D{1};
 
-sim_file=a{1}.D{1};
+simsignal=sin((Dmesh.time- Dmesh.time(1))*freq*2*pi);
+simsignal=simsignal./repmat(std(simsignal'),size(simsignal,2),1)';
+
+[Dnew,meshsourceind]=spm_eeg_simulate({Dmesh}, prefix, simpos,...
+    simsignal, [], invwoi, [], SNR, [], [], sim_patch_size,...
+    dipole_moment, []);
+sim_file=Dnew.fname;
