@@ -1,16 +1,11 @@
 function F=invert_ebb(data_file, coreg_fname, mri_fname, mesh_fname, ...
     nas, lpa, rpa, patch_size, n_temp_modes, woi)
 
-addpath('/home/bonaiuto/Dropbox/Toolboxes/DANC_spm12/spm12');
+addpath('/home/bonaiuto/DANC_spm12/spm12');
 
 % Start SPM
 spm('defaults','eeg');
 spm_jobman('initcfg');
-
-woi=cell2mat(woi);
-nas=cell2mat(nas);
-lpa=cell2mat(lpa);
-rpa=cell2mat(rpa);
 
 % Copy datafile
 clear jobs

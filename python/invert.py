@@ -1,5 +1,4 @@
 import os
-import time
 import matlab.engine
 import numpy as np
 
@@ -18,8 +17,8 @@ def invert_ebb(subj_id, out_dir, nas, lpa, rpa, mri_fname, mesh_fname, data_file
     data_fname=os.path.split(data_file)[-1]
     coreg_fname = os.path.join(subject_out_dir, f'{mesh_base}.{data_fname}')
 
-    F=parasite.invert_ebb(data_file, coreg_fname, mri_fname, mesh_fname, nas, lpa, rpa, float(patch_size),
-                          float(n_temp_modes), woi, nargout=1)
+    F=parasite.invert_ebb(data_file, coreg_fname, mri_fname, mesh_fname, matlab.double(nas), matlab.double(lpa),
+                          matlab.double(rpa), float(patch_size), float(n_temp_modes), matlab.double(woi), nargout=1)
     parasite.close()
 
     return [coreg_fname, F]
