@@ -767,13 +767,3 @@ def smoothmesh_multilayer_mm(meshname, fwhm, n_layers, redo=False, n_jobs=-1):
     sio.savemat(smoothmeshname, {'QG': QG, 'faces': faces}, do_compression=True)
 
     return smoothmeshname
-
-
-if __name__ == '__main__':
-    postprocess_freesurfer_surfaces('sub-104',
-                                    './test_output',
-                                    'multilayer.2.ds.ds_surf_norm.gii',
-                                    n_surfaces=2,
-                                    ds_factor=0.1,
-                                    orientation='ds_surf_norm',
-                                    remove_deep=True)
