@@ -1,7 +1,7 @@
-function F=invert_ebb(data_file, coreg_fname, mri_fname, mesh_fname, ...
-    nas, lpa, rpa, patch_size, n_temp_modes, woi)
+function [F,MU]=invert_ebb(data_file, coreg_fname, mri_fname, mesh_fname, ...
+    nas, lpa, rpa, patch_size, n_temp_modes, woi, spm_path)
 
-addpath('/home/bonaiuto/DANC_spm12/spm12');
+addpath(spm_path);
 
 % Start SPM
 spm('defaults','eeg');
@@ -82,3 +82,7 @@ batch_idx=batch_idx+1;
 % Load inversion - get cross validation error end F
 Drecon=spm_eeg_load(coreg_fname);                
 F=Drecon.inv{1}.inverse.crossF;
+
+M=Drecon.inv{1}.inverse.M;
+U=Drecon.inv{1}.inverse.U{1};
+MU=M*U;
