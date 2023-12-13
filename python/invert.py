@@ -106,6 +106,7 @@ def load_source_time_series(data_D, inv_D, vertices=[], mat_eng=None):
         mat_eng = matlab.engine.start_matlab()
         close_matlab = True
 
+    vertices = [x + 1 for x in vertices]
     source_ts = mat_eng.load_source_time_series(data_D, inv_D, matlab.double(vertices), spm_path, nargout=1)
 
     if close_matlab:
