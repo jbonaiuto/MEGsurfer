@@ -536,9 +536,10 @@ def postprocess_freesurfer_surfaces(subj_id,
             for hemi in hemispheres:
                 wm_file = os.path.join(fs_subject_dir, 'surf', '{}.white'.format(hemi))
                 out_file = os.path.join(fs_subject_dir, 'surf', '{}.{}'.format(hemi, layer_name))
-                cmd = ['mris_expand', '-thickness', wm_file, '{}'.format(layer), out_file]
-                print(' '.join(cmd))
-                subprocess.run(cmd)
+                if not os.path.exists(out_file):
+                    cmd = ['mris_expand', '-thickness', wm_file, '{}'.format(layer), out_file]
+                    print(' '.join(cmd))
+                    subprocess.run(cmd)
         elif layer == 0:
             layer_names.append('white')
 
