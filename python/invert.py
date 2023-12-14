@@ -9,7 +9,7 @@ from surf import smoothmesh_multilayer_mm
 
 
 def invert_ebb(out_dir, nas, lpa, rpa, mri_fname, mesh_fname, data_file, n_layers, patch_size=5,
-               n_temp_modes=4, woi=[-np.inf, np.inf], mat_eng=None):
+               n_temp_modes=4, foi=[0, 256], woi=[-np.inf, np.inf], mat_eng=None):
 
     spm_path = get_spm_path()
 
@@ -29,8 +29,8 @@ def invert_ebb(out_dir, nas, lpa, rpa, mri_fname, mesh_fname, data_file, n_layer
         woi = woi.tolist()
 
     F,MU=mat_eng.invert_ebb(data_file, coreg_fname, mri_fname, mesh_fname, matlab.double(nas), matlab.double(lpa),
-                            matlab.double(rpa), float(patch_size), float(n_temp_modes), matlab.double(woi),
-                            spm_path, nargout=2)
+                            matlab.double(rpa), float(patch_size), float(n_temp_modes), matlab.double(foi),
+                            matlab.double(woi), spm_path, nargout=2)
 
     if close_matlab:
         mat_eng.close()
@@ -39,7 +39,7 @@ def invert_ebb(out_dir, nas, lpa, rpa, mri_fname, mesh_fname, data_file, n_layer
 
 
 def invert_msp(out_dir, nas, lpa, rpa, mri_fname, mesh_fname, data_file, n_layers, priors=[], patch_size=5,
-               n_temp_modes=4, woi=[-np.inf, np.inf], mat_eng=None):
+               n_temp_modes=4, foi=[0, 256], woi=[-np.inf, np.inf], mat_eng=None):
 
     spm_path = get_spm_path()
 
@@ -61,7 +61,7 @@ def invert_msp(out_dir, nas, lpa, rpa, mri_fname, mesh_fname, data_file, n_layer
 
     F,MU=mat_eng.invert_msp(data_file, coreg_fname, mri_fname, mesh_fname, matlab.double(nas), matlab.double(lpa),
                             matlab.double(rpa), matlab.double(priors), float(patch_size), float(n_temp_modes),
-                            matlab.double(woi), spm_path, nargout=2)
+                            matlab.double(foi), matlab.double(woi), spm_path, nargout=2)
 
     if close_matlab:
         mat_eng.close()
@@ -70,7 +70,7 @@ def invert_msp(out_dir, nas, lpa, rpa, mri_fname, mesh_fname, data_file, n_layer
 
 
 def invert_sliding_window(out_dir, prior, nas, lpa, rpa, mri_fname, mesh_fname, data_file, n_layers, patch_size=5,
-                          n_temp_modes=4, win_size=10, win_overlap=True, mat_eng=None):
+                          n_temp_modes=4, win_size=10, win_overlap=True, foi=[0, 256], mat_eng=None):
 
     spm_path = get_spm_path()
 
@@ -89,7 +89,8 @@ def invert_sliding_window(out_dir, prior, nas, lpa, rpa, mri_fname, mesh_fname, 
 
     F,wois = mat_eng.invert_sliding_window(float(prior), data_file, coreg_fname, mri_fname, mesh_fname, matlab.double(nas),
                                            matlab.double(lpa), matlab.double(rpa), float(patch_size),
-                                           float(n_temp_modes), float(win_size), win_overlap, spm_path, nargout=2)
+                                           float(n_temp_modes), float(win_size), win_overlap, matlab.double(foi),
+                                           spm_path, nargout=2)
 
     if close_matlab:
         mat_eng.close()

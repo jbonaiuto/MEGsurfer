@@ -1,5 +1,5 @@
 function [F,MU]=invert_msp(data_file, coreg_fname, mri_fname, mesh_fname, ...
-    nas, lpa, rpa, priors, patch_size, n_temp_modes, woi, spm_path)
+    nas, lpa, rpa, priors, patch_size, n_temp_modes, foi, woi, spm_path)
 
 addpath(spm_path);
 
@@ -67,7 +67,7 @@ matlabbatch{batch_idx}.spm.meeg.source.invertiter.whatconditions.all = 1;
 matlabbatch{batch_idx}.spm.meeg.source.invertiter.isstandard.custom.invfunc = 'Classic';
 matlabbatch{batch_idx}.spm.meeg.source.invertiter.isstandard.custom.invtype = 'MSP'; %;
 matlabbatch{batch_idx}.spm.meeg.source.invertiter.isstandard.custom.woi = woi;
-matlabbatch{batch_idx}.spm.meeg.source.invertiter.isstandard.custom.foi = [0 256];
+matlabbatch{batch_idx}.spm.meeg.source.invertiter.isstandard.custom.foi = foi;
 matlabbatch{batch_idx}.spm.meeg.source.invertiter.isstandard.custom.hanning = 1;
 if length(priors)>0
     matlabbatch{batch_idx}.spm.meeg.source.invertiter.isstandard.custom.isfixedpatch.fixedpatch.fixedfile = {patchfilename}; % '<UNDEFINED>';
